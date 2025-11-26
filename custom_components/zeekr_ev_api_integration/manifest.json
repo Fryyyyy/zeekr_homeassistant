@@ -1,0 +1,12 @@
+{
+  "domain": "zeekr_ev_api",
+  "name": "Zeekr EV API Integration",
+  "documentation": "https://github.com/Fryyyyy/zeekr_homeassistant",
+  "issue_tracker": "https://github.com/Fryyyyy/zeekr_homeassistant/issues",
+  "dependencies": [],
+  "config_flow": true,
+  "codeowners": ["@Fryyyyy"],
+  "requirements": [],
+  "integration_type": "hub",
+  "iot_class": "cloud_polling"
+}
