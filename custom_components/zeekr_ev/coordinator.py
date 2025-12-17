@@ -11,8 +11,9 @@ from homeassistant.helpers.update_coordinator import (
     UpdateFailed,
 )
 
+from zeekr_ev_api.client import ZeekrClient, Vehicle
+
 from .const import DOMAIN
-from .zeekr_api.client import ZeekrClient, Vehicle
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +49,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
 
             data = {}
             for vehicle in self.vehicles:
+                # get_status returns a dict, no need to wrap if it was a property, but it's a method calling network
                 vehicle_data = await self.hass.async_add_executor_job(
                     vehicle.get_status
                 )

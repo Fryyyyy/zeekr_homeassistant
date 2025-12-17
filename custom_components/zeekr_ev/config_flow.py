@@ -2,9 +2,7 @@
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback
-from homeassistant.helpers.aiohttp_client import async_create_clientsession
-
-import zeekr_ev_api
+from zeekr_ev_api.client import ZeekrClient
 
 from .const import CONF_PASSWORD
 from .const import CONF_USERNAME
@@ -25,10 +23,6 @@ class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input=None):
         """Handle a flow initialized by the user."""
         self._errors = {}
-
-        # Uncomment the next 2 lines if only a single instance of the integration is allowed:
-        # if self._async_current_entries():
-        #     return self.async_abort(reason="single_instance_allowed")
 
         if user_input is not None:
             valid = await self._test_credentials(
@@ -63,9 +57,8 @@ class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
     async def _test_credentials(self, username, password):
         """Return true if credentials is valid."""
         try:
-            session = async_create_clientsession(self.hass)
-            client = ZeekrEVAPIApiClient(username, password, session)
-            await client.async_get_data()
+            client = ZeekrClient(username=username, password=password)
+            await self.hass.async_add_executor_job(client.login)
             return True
         except Exception:  # pylint: disable=broad-except
             pass
