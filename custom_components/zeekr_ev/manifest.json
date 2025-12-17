@@ -6,7 +6,7 @@
   "dependencies": [],
   "config_flow": true,
   "codeowners": ["@Fryyyyy"],
-  "requirements": [],
+  "requirements": ["zeekr_ev_api==0.1.0"],
   "integration_type": "hub",
   "iot_class": "cloud_polling"
 }
