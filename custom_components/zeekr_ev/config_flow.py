@@ -1,4 +1,5 @@
 """Adds config flow for Zeekr EV API Integration."""
+
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.core import callback

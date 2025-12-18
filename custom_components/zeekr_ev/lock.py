@@ -1,4 +1,5 @@
 """Lock platform for Zeekr EV API Integration."""
+
 from __future__ import annotations
 
 from typing import Any

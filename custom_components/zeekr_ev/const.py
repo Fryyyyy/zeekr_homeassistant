@@ -1,4 +1,5 @@
 """Constants for Zeekr EV API Integration."""
+
 # Base component constants
 NAME = "Zeekr EV API Integration"
 DOMAIN = "zeekr_ev"

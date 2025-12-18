@@ -4,7 +4,7 @@ Custom integration to integrate Zeekr EV API Integration with Home Assistant.
 For more details about this integration, please refer to
 https://github.com/Fryyyyy/zeekr_homeassistant
 """
-import asyncio
+
 import logging
 
 from homeassistant.config_entries import ConfigEntry

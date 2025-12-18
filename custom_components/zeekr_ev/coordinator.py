@@ -1,4 +1,5 @@
 """DataUpdateCoordinator for Zeekr EV API Integration."""
+
 from __future__ import annotations
 
 import logging

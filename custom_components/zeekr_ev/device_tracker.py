@@ -1,4 +1,5 @@
 """Device tracker platform for Zeekr EV API Integration."""
+
 from __future__ import annotations
 
 from homeassistant.components.device_tracker import SourceType
