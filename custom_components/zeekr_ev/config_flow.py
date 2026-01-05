@@ -26,7 +26,7 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, DOMAIN=DOMAIN):  # type: ignore[call-arg]
+class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     """Config flow for zeekr_ev_api_integration."""
 
     VERSION = 1
