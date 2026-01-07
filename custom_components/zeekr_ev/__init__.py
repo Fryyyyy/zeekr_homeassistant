@@ -22,6 +22,7 @@ from .const import (
     CONF_USERNAME,
     CONF_VIN_IV,
     CONF_VIN_KEY,
+    CONF_COUNTRY_CODE,
     DOMAIN,
     PLATFORMS,
     STARTUP_MESSAGE,
@@ -44,6 +45,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     username = entry.data.get(CONF_USERNAME)
     password = entry.data.get(CONF_PASSWORD)
+    country_code = entry.data.get(CONF_COUNTRY_CODE, "")
     hmac_access_key = entry.data.get(CONF_HMAC_ACCESS_KEY, "")
     hmac_secret_key = entry.data.get(CONF_HMAC_SECRET_KEY, "")
     password_public_key = entry.data.get(CONF_PASSWORD_PUBLIC_KEY, "")
@@ -62,6 +64,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         client = ZeekrClient(
             username=username,
             password=password,
+            country_code=country_code,
             hmac_access_key=hmac_access_key,
             hmac_secret_key=hmac_secret_key,
             password_public_key=password_public_key,

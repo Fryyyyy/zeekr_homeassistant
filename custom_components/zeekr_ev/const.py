@@ -26,6 +26,7 @@ PLATFORMS = [BINARY_SENSOR, DEVICE_TRACKER, LOCK, SENSOR]
 CONF_ENABLED = "enabled"
 CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
+CONF_COUNTRY_CODE = "country_code"
 CONF_HMAC_ACCESS_KEY = "hmac_access_key"
 CONF_HMAC_SECRET_KEY = "hmac_secret_key"
 CONF_PASSWORD_PUBLIC_KEY = "password_public_key"

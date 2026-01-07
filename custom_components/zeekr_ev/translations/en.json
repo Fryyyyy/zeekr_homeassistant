@@ -6,7 +6,15 @@
         "description": "Please enter your Zeekr credentials.",
         "data": {
           "username": "Username",
-          "password": "Password"
+          "password": "Password",
+          "country_code": "Country code",
+          "polling_interval": "Polling interval (minutes)",
+          "hmac_access_key": "HMAC access key",
+          "hmac_secret_key": "HMAC secret key",
+          "password_public_key": "Password public key",
+          "prod_secret": "Prod secret",
+          "vin_key": "VIN key",
+          "vin_iv": "VIN IV"
         }
       }
     },
