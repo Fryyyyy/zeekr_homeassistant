@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from homeassistant.components.lock import LockEntity
@@ -12,6 +13,9 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import ZeekrCoordinator
+
+# Delay before polling after a remote command (seconds)
+COMMAND_POLL_DELAY = 15
 
 
 async def async_setup_entry(
@@ -140,7 +144,11 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
             await self.hass.async_add_executor_job(
                 vehicle.do_remote_control, command, service_id, setting
             )
-            await self.coordinator.async_request_refresh()
+            # Schedule a delayed refresh to get updated state after car processes command
+            async def delayed_refresh():
+                await asyncio.sleep(COMMAND_POLL_DELAY)
+                await self.coordinator.async_request_refresh()
+            self.hass.async_create_task(delayed_refresh())
 
     async def async_unlock(self, **kwargs: Any) -> None:
         """Unlock the car."""
@@ -155,8 +163,9 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
         if self.field == "centralLockingStatus":
             # Unlock all doors
             # User: "stop" to unlock
+            # Service RDU = Remote Door Unlock (RDL is for Lock)
             command = "stop"
-            service_id = "RDL"
+            service_id = "RDU"
             setting = {
                 "serviceParameters": [
                     {
@@ -183,7 +192,11 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
             await self.hass.async_add_executor_job(
                 vehicle.do_remote_control, command, service_id, setting
             )
-            await self.coordinator.async_request_refresh()
+            # Schedule a delayed refresh to get updated state after car processes command
+            async def delayed_refresh():
+                await asyncio.sleep(COMMAND_POLL_DELAY)
+                await self.coordinator.async_request_refresh()
+            self.hass.async_create_task(delayed_refresh())
 
     @property
     def device_info(self):
