@@ -19,7 +19,10 @@ BINARY_SENSOR = "binary_sensor"
 SENSOR = "sensor"
 DEVICE_TRACKER = "device_tracker"
 LOCK = "lock"
-PLATFORMS = [BINARY_SENSOR, DEVICE_TRACKER, LOCK, SENSOR]
+CLIMATE = "climate"
+SWITCH = "switch"
+COVER = "cover"
+PLATFORMS = [BINARY_SENSOR, DEVICE_TRACKER, LOCK, SENSOR, CLIMATE, SWITCH, COVER]
 
 
 # Configuration and options
