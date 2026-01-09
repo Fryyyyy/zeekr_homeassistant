@@ -16,13 +16,14 @@ BINARY_SENSOR_DEVICE_CLASS = "connectivity"
 
 # Platforms
 BINARY_SENSOR = "binary_sensor"
+BUTTON = "button"
 SENSOR = "sensor"
 DEVICE_TRACKER = "device_tracker"
 LOCK = "lock"
 CLIMATE = "climate"
 SWITCH = "switch"
 COVER = "cover"
-PLATFORMS = [BINARY_SENSOR, CLIMATE, COVER, DEVICE_TRACKER, LOCK, SENSOR, SWITCH]
+PLATFORMS = [BINARY_SENSOR, BUTTON, CLIMATE, COVER, DEVICE_TRACKER, LOCK, SENSOR, SWITCH]
 
 
 # Configuration and options
