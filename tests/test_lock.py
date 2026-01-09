@@ -37,6 +37,7 @@ def test_is_locked_regular_field():
     lk = ZeekrLock(coordinator, "VIN1", "doorLockStatusDriver", "Driver door lock", "drivingSafetyStatus")
     assert lk.is_locked is False
 
+
 def test_is_locked_charge_lid_logic():
     # "1" = Open (Unlocked), "2" = Closed (Locked)
     data_open = {"VIN1": {"additionalVehicleStatus": {"electricVehicleStatus": {"chargeLidDcAcStatus": "1"}}}}
