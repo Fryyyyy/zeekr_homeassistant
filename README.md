@@ -30,6 +30,11 @@ This is a custom integration for Zeekr Electric Vehicles for Home Assistant. It 
 3. Search for "Zeekr EV".
 4. Enter your Zeekr account email and password.
 
+## Tips & Tricks
+
+- **Account**: Create a new account and share your car with the new account to avoid "The account is currently logged in elsewhere"
+- **Secrets**: Get the secrets by decompiling the Android app and/or tracing the app's requests
+
 ## Issues
 
 Please report issues on the [GitHub Issue Tracker](https://github.com/Fryyyyy/zeekr_homeassistant/issues).
