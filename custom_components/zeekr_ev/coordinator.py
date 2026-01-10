@@ -3,15 +3,22 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import importlib
 import logging
-
-from custom_components.zeekr_ev_api.client import Vehicle, ZeekrClient
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL, DOMAIN
+from .const import CONF_POLLING_INTERVAL, CONF_USE_LOCAL_API, DEFAULT_POLLING_INTERVAL, DOMAIN
+
+if TYPE_CHECKING:
+    # Import for type checking only
+    try:
+        from zeekr_ev_api.client import Vehicle, ZeekrClient
+    except ImportError:
+        from custom_components.zeekr_ev_api.client import Vehicle, ZeekrClient
 
 _LOGGER = logging.getLogger(__name__)
 

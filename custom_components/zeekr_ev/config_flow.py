@@ -30,23 +30,29 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def get_zeekr_client_class(use_local: bool = True):
+def get_zeekr_client_class(use_local: bool = False):
     """Dynamically import ZeekrClient from local or installed package."""
     if use_local:
         try:
             module = importlib.import_module("custom_components.zeekr_ev_api.client")
+            _LOGGER.debug("Using local zeekr_ev_api from custom_components")
             return module.ZeekrClient
-        except ImportError:
-            _LOGGER.warning(
-                "Local zeekr_ev_api not found, falling back to installed package"
-            )
+        except ImportError as ex:
+            raise ImportError(
+                "Local zeekr_ev_api not found in custom_components. "
+                "Please install it or disable 'Use local API' option."
+            ) from ex
     
+    # Try to import from installed package (pip)
     try:
         module = importlib.import_module("zeekr_ev_api.client")
+        _LOGGER.debug("Using installed zeekr_ev_api package")
         return module.ZeekrClient
-    except ImportError:
-        module = importlib.import_module("custom_components.zeekr_ev_api.client")
-        return module.ZeekrClient
+    except ImportError as ex:
+        raise ImportError(
+            "zeekr_ev_api package not installed. "
+            "Please install it via pip or enable 'Use local API' option."
+        ) from ex
 
 
 class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
@@ -184,7 +190,7 @@ class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
         prod_secret,
         vin_key,
         vin_iv,
-        use_local_api=True,
+        use_local_api=False,
     ):
         """Return true if credentials is valid."""
         try:
@@ -346,11 +352,13 @@ class ZeekrEVAPIOptionsFlowHandler(config_entries.OptionsFlow):
         prod_secret,
         vin_key,
         vin_iv,
-        use_local_api=True,
+        use_local_api=False,
     ):
         """Return true if credentials is valid."""
         try:
-            ZeekrClient = get_zeekr_client_class(use_local_api)
+            ZeekrClient = await self.hass.async_add_executor_job(
+                get_zeekr_client_class, use_local_api
+            )
             client = ZeekrClient(
                 username=username,
                 password=password,

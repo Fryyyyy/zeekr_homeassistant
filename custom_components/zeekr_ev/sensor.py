@@ -38,6 +38,11 @@ async def async_setup_entry(
     # Add API Status sensor with token attributes (one per integration, not per vehicle)
     entities.append(ZeekrAPIStatusSensor(coordinator, entry.entry_id))
 
+    # coordinator.data might be None or empty on first setup
+    if not coordinator.data:
+        async_add_entities(entities)
+        return
+
     for vin, data in coordinator.data.items():
         # Battery Level
         entities.append(
@@ -251,12 +256,12 @@ class ZeekrAPIStatusSensor(CoordinatorEntity, SensorEntity):
             # Include X-VIN (encrypted VIN) for each vehicle
             if self.coordinator.vehicles:
                 try:
-                    # Import the encryption function dynamically
+                    # Import the encryption function dynamically (try pip first, then local)
                     import importlib
                     try:
-                        zeekr_app_sig = importlib.import_module("custom_components.zeekr_ev_api.zeekr_app_sig")
-                    except ImportError:
                         zeekr_app_sig = importlib.import_module("zeekr_ev_api.zeekr_app_sig")
+                    except ImportError:
+                        zeekr_app_sig = importlib.import_module("custom_components.zeekr_ev_api.zeekr_app_sig")
                     
                     x_vins = {}
                     for vehicle in self.coordinator.vehicles:

@@ -32,7 +32,7 @@ from .coordinator import ZeekrCoordinator
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
 
-def get_zeekr_client_class(use_local: bool = True):
+def get_zeekr_client_class(use_local: bool = False):
     """Dynamically import ZeekrClient from local or installed package."""
     if use_local:
         try:
@@ -40,22 +40,22 @@ def get_zeekr_client_class(use_local: bool = True):
             module = importlib.import_module("custom_components.zeekr_ev_api.client")
             _LOGGER.debug("Using local zeekr_ev_api from custom_components")
             return module.ZeekrClient
-        except ImportError:
-            _LOGGER.warning(
-                "Local zeekr_ev_api not found in custom_components, "
-                "falling back to installed package"
-            )
+        except ImportError as ex:
+            raise ImportError(
+                "Local zeekr_ev_api not found in custom_components. "
+                "Please install it or disable 'Use local API' option."
+            ) from ex
     
     # Try to import from installed package (pip)
     try:
         module = importlib.import_module("zeekr_ev_api.client")
         _LOGGER.debug("Using installed zeekr_ev_api package")
         return module.ZeekrClient
-    except ImportError:
-        # Final fallback to local
-        module = importlib.import_module("custom_components.zeekr_ev_api.client")
-        _LOGGER.debug("Falling back to local zeekr_ev_api from custom_components")
-        return module.ZeekrClient
+    except ImportError as ex:
+        raise ImportError(
+            "zeekr_ev_api package not installed. "
+            "Please install it via pip or enable 'Use local API' option."
+        ) from ex
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType):
@@ -84,7 +84,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
         return False
 
     use_local_api = entry.data.get(CONF_USE_LOCAL_API, False)
-    ZeekrClient = get_zeekr_client_class(use_local_api)
+    
+    # Run import in executor to avoid blocking the event loop
+    try:
+        ZeekrClient = await hass.async_add_executor_job(
+            get_zeekr_client_class, use_local_api
+        )
+    except ImportError as ex:
+        _LOGGER.error("Failed to import zeekr_ev_api: %s", ex)
+        raise ConfigEntryNotReady from ex
 
     # Try to reuse client from config flow to avoid duplicate login
     client = hass.data.get(DOMAIN, {}).pop("_temp_client", None)
