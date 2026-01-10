@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 import logging
 
-from zeekr_ev_api.client import Vehicle, ZeekrClient
+from custom_components.zeekr_ev_api.client import Vehicle, ZeekrClient
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant

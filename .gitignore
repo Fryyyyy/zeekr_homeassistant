@@ -9,3 +9,4 @@ notes
 .devcontainer
 .vscode
 .mypy_cache
+*.bak

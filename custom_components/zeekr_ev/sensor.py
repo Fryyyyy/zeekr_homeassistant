@@ -34,6 +34,10 @@ async def async_setup_entry(
     coordinator: ZeekrCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     entities = []
+
+    # Add API Status sensor with token attributes (one per integration, not per vehicle)
+    entities.append(ZeekrAPIStatusSensor(coordinator, entry.entry_id))
+
     for vin, data in coordinator.data.items():
         # Battery Level
         entities.append(
@@ -203,4 +207,75 @@ class ZeekrSensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, self.vin)},
             "name": f"Zeekr {self.vin}",
             "manufacturer": "Zeekr",
+        }
+
+
+class ZeekrAPIStatusSensor(CoordinatorEntity, SensorEntity):
+    """Zeekr API Status sensor with token attributes."""
+
+    def __init__(
+        self,
+        coordinator: ZeekrCoordinator,
+        entry_id: str,
+    ) -> None:
+        """Initialize the API status sensor."""
+        super().__init__(coordinator)
+        self._entry_id = entry_id
+        self._attr_name = "Zeekr API Status"
+        self._attr_unique_id = f"{entry_id}_api_status"
+        self._attr_icon = "mdi:api"
+
+    @property
+    def native_value(self):
+        """Return the state of the sensor."""
+        if self.coordinator.client and self.coordinator.client.logged_in:
+            return "connected"
+        return "disconnected"
+
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes including tokens."""
+        attrs = {}
+        client = self.coordinator.client
+        if client:
+            attrs["auth_token"] = client.auth_token
+            attrs["bearer_token"] = client.bearer_token
+            attrs["access_token"] = client.bearer_token  # Same as bearer_token, for clarity
+            attrs["logged_in"] = client.logged_in
+            attrs["username"] = getattr(client, "username", None)
+            attrs["region_code"] = getattr(client, "region_code", None)
+            attrs["app_server_host"] = getattr(client, "app_server_host", None)
+            attrs["usercenter_host"] = getattr(client, "usercenter_host", None)
+            # Include vehicle count
+            attrs["vehicle_count"] = len(self.coordinator.vehicles) if self.coordinator.vehicles else 0
+            # Include X-VIN (encrypted VIN) for each vehicle
+            if self.coordinator.vehicles:
+                try:
+                    # Import the encryption function dynamically
+                    import importlib
+                    try:
+                        zeekr_app_sig = importlib.import_module("custom_components.zeekr_ev_api.zeekr_app_sig")
+                    except ImportError:
+                        zeekr_app_sig = importlib.import_module("zeekr_ev_api.zeekr_app_sig")
+                    
+                    x_vins = {}
+                    for vehicle in self.coordinator.vehicles:
+                        vin = vehicle.vin
+                        encrypted_vin = zeekr_app_sig.aes_encrypt(
+                            vin, client.vin_key, client.vin_iv
+                        )
+                        x_vins[vin] = encrypted_vin
+                    attrs["x_vins"] = x_vins
+                except Exception:
+                    pass  # Silently fail if encryption module not available
+        return attrs
+
+    @property
+    def device_info(self):
+        """Return device info."""
+        return {
+            "identifiers": {(DOMAIN, self._entry_id)},
+            "name": "Zeekr API",
+            "manufacturer": "Zeekr",
+            "model": "API Integration",
         }

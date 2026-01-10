@@ -14,7 +14,11 @@
           "password_public_key": "Password public key",
           "prod_secret": "Prod secret",
           "vin_key": "VIN key",
-          "vin_iv": "VIN IV"
+          "vin_iv": "VIN IV",
+          "use_local_api": "Use local API (custom_components/zeekr_ev_api)"
+        },
+        "data_description": {
+          "use_local_api": "Enable to use the local zeekr_ev_api folder from custom_components. Disable to use an installed package (pip)."
         }
       }
     },
@@ -31,7 +35,11 @@
         "data": {
           "binary_sensor": "Binary sensor enabled",
           "sensor": "Sensor enabled",
-          "switch": "Switch enabled"
+          "switch": "Switch enabled",
+          "use_local_api": "Use local API (custom_components/zeekr_ev_api)"
+        },
+        "data_description": {
+          "use_local_api": "Enable to use the local zeekr_ev_api folder from custom_components. Disable to use an installed package (pip)."
         }
       }
     }
