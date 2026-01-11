@@ -11,7 +11,9 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+
 from .const import CONF_POLLING_INTERVAL, CONF_USE_LOCAL_API, DEFAULT_POLLING_INTERVAL, DOMAIN
+from .request_stats import ZeekrRequestStats
 
 if TYPE_CHECKING:
     # Import for type checking only
@@ -36,6 +38,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         self.client = client
         self.entry = entry
         self.vehicles: list[Vehicle] = []
+        self.request_stats = ZeekrRequestStats()
         polling_interval = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL)
         super().__init__(
             hass,
@@ -43,6 +46,22 @@ class ZeekrCoordinator(DataUpdateCoordinator):
             name=DOMAIN,
             update_interval=timedelta(minutes=polling_interval),
         )
+
+        # Schedule daily reset at midnight
+        self._unsub_reset = None
+        self._setup_daily_reset()
+
+    def _setup_daily_reset(self):
+        import homeassistant.helpers.event as event
+        from datetime import time as dtime
+        if self._unsub_reset:
+            self._unsub_reset()
+        self._unsub_reset = event.async_track_time_change(
+            self.hass, self._handle_daily_reset, hour=0, minute=0, second=0
+        )
+
+    async def _handle_daily_reset(self, now):
+        self.request_stats.reset_today()
 
     def get_vehicle_by_vin(self, vin: str) -> Vehicle | None:
         """Get a vehicle by VIN."""
@@ -54,6 +73,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict[str, dict]:
         """Fetch data from API endpoint."""
         try:
+            self.request_stats.inc_request()
             # Refresh vehicle list if empty (first run)
             if not self.vehicles:
                 self.vehicles = await self.hass.async_add_executor_job(
@@ -82,3 +102,6 @@ class ZeekrCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:
             return data
+
+    def inc_invoke(self):
+        self.request_stats.inc_invoke()

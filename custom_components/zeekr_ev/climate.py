@@ -126,6 +126,7 @@ class ZeekrClimate(CoordinatorEntity, ClimateEntity):
             }
 
         if setting:
+            self.coordinator.inc_invoke()
             await self.hass.async_add_executor_job(
                 vehicle.do_remote_control, command, service_id, setting
             )

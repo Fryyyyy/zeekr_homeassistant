@@ -38,6 +38,12 @@ async def async_setup_entry(
     # Add API Status sensor with token attributes (one per integration, not per vehicle)
     entities.append(ZeekrAPIStatusSensor(coordinator, entry.entry_id))
 
+    # Add API stats sensors (global, not per vehicle)
+    entities.append(ZeekrAPIStatSensor(coordinator, entry.entry_id, "api_requests_today", "API Requests Today", lambda stats: stats.api_requests_today))
+    entities.append(ZeekrAPIStatSensor(coordinator, entry.entry_id, "api_invokes_today", "API Invokes Today", lambda stats: stats.api_invokes_today))
+    entities.append(ZeekrAPIStatSensor(coordinator, entry.entry_id, "api_requests_total", "API Requests Total", lambda stats: stats.api_requests_total))
+    entities.append(ZeekrAPIStatSensor(coordinator, entry.entry_id, "api_invokes_total", "API Invokes Total", lambda stats: stats.api_invokes_total))
+
     # coordinator.data might be None or empty on first setup
     if not coordinator.data:
         async_add_entities(entities)
@@ -239,7 +245,7 @@ class ZeekrAPIStatusSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return the state attributes including tokens."""
+        """Return the state attributes including tokens only."""
         attrs = {}
         client = self.coordinator.client
         if client:
@@ -262,7 +268,6 @@ class ZeekrAPIStatusSensor(CoordinatorEntity, SensorEntity):
                         zeekr_app_sig = importlib.import_module("zeekr_ev_api.zeekr_app_sig")
                     except ImportError:
                         zeekr_app_sig = importlib.import_module("custom_components.zeekr_ev_api.zeekr_app_sig")
-                    
                     x_vins = {}
                     for vehicle in self.coordinator.vehicles:
                         vin = vehicle.vin
@@ -274,6 +279,33 @@ class ZeekrAPIStatusSensor(CoordinatorEntity, SensorEntity):
                 except Exception:
                     pass  # Silently fail if encryption module not available
         return attrs
+
+# Dedicated sensor for API stats
+class ZeekrAPIStatSensor(CoordinatorEntity, SensorEntity):
+    def __init__(self, coordinator: ZeekrCoordinator, entry_id: str, key: str, name: str, value_fn) -> None:
+        super().__init__(coordinator)
+        self._entry_id = entry_id
+        self._key = key
+        self._attr_name = name
+        self._attr_unique_id = f"{entry_id}_{key}"
+        self._value_fn = value_fn
+        self._attr_icon = "mdi:counter"
+
+    @property
+    def native_value(self):
+        stats = getattr(self.coordinator, "request_stats", None)
+        if stats:
+            return self._value_fn(stats)
+        return None
+
+    @property
+    def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._entry_id)},
+            "name": "Zeekr API",
+            "manufacturer": "Zeekr",
+            "model": "API Integration",
+        }
 
     @property
     def device_info(self):

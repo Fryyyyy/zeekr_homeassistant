@@ -141,6 +141,7 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
             }
 
         if command and service_id and setting:
+            self.coordinator.inc_invoke()
             await self.hass.async_add_executor_job(
                 vehicle.do_remote_control, command, service_id, setting
             )
@@ -189,6 +190,7 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
             }
 
         if command and service_id and setting:
+            self.coordinator.inc_invoke()
             await self.hass.async_add_executor_job(
                 vehicle.do_remote_control, command, service_id, setting
             )
