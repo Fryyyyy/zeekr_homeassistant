@@ -8,6 +8,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import ZeekrCoordinator
 
+import logging
+_LOGGER = logging.getLogger(__name__)
 
 class ZeekrEntity(CoordinatorEntity[ZeekrCoordinator]):
     """Base entity for Zeekr."""
@@ -16,11 +18,7 @@ class ZeekrEntity(CoordinatorEntity[ZeekrCoordinator]):
         """Initialize."""
         super().__init__(coordinator)
 
-        """Init logging for debugging purposes"""
-        import logging
-        _LOGGER = logging.getLogger(__name__)
-
-        """Set device info."""
+        # Set device info
         self.vin = vin
         vehicle = coordinator.get_vehicle_by_vin(vin)
         if vehicle:
