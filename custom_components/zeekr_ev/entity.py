@@ -24,8 +24,8 @@ class ZeekrEntity(CoordinatorEntity[ZeekrCoordinator]):
         self.vin = vin
         vehicle = coordinator.get_vehicle_by_vin(vin)
         if vehicle:
-            plate_no = getattr(vehicle, "plateNo", None) or getattr(vehicle, "data", {}).get("plateNo")
-            display_os_version = getattr(vehicle, "displayOSVersion", None) or getattr(vehicle, "data", {}).get("displayOSVersion")
+            plate_no = getattr(vehicle, "data", {}).get("plateNo")
+            display_os_version = getattr(vehicle, "data", {}).get("displayOSVersion")
 
             self._attr_device_info = DeviceInfo(
                 identifiers={(DOMAIN, vin)},
