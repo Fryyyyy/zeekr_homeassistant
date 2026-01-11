@@ -9,7 +9,7 @@
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/Fryyyyy/zeekr_homeassistant/issues",
   "requirements": [
-    "zeekr_ev_api>=0.1.0"
+    "zeekr_ev_api>=0.1.6"
   ],
   "version": "0.1.0"
 }
