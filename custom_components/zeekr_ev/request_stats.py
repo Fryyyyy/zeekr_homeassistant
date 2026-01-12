@@ -5,6 +5,7 @@ import os
 import json
 from datetime import datetime
 
+
 class ZeekrRequestStats:
     STATS_FILE = os.path.join(os.path.dirname(__file__), 'zeekr_stats.json')
 

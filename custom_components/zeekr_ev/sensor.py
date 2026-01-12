@@ -280,6 +280,7 @@ class ZeekrAPIStatusSensor(CoordinatorEntity, SensorEntity):
                     pass  # Silently fail if encryption module not available
         return attrs
 
+
 # Dedicated sensor for API stats
 class ZeekrAPIStatSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator: ZeekrCoordinator, entry_id: str, key: str, name: str, value_fn) -> None:
@@ -300,16 +301,6 @@ class ZeekrAPIStatSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._entry_id)},
-            "name": "Zeekr API",
-            "manufacturer": "Zeekr",
-            "model": "API Integration",
-        }
-
-    @property
-    def device_info(self):
-        """Return device info."""
         return {
             "identifiers": {(DOMAIN, self._entry_id)},
             "name": "Zeekr API",

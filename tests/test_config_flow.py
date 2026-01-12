@@ -19,6 +19,7 @@ async def test_test_credentials_success(hass, monkeypatch):
     ok = await flow._test_credentials(
         "user",
         "pass",
+        "AU",
         "hmac_access",
         "hmac_secret",
         "pwd_pub",
@@ -38,6 +39,7 @@ async def test_test_credentials_failure(hass, monkeypatch):
     ok = await flow._test_credentials(
         "user",
         "bad",
+        "AU",
         "hmac_access",
         "hmac_secret",
         "pwd_pub",
