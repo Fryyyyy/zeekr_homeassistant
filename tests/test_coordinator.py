@@ -22,8 +22,8 @@ class FakeClient:
         return self._vehicles
 
 
-async def test_get_vehicle_by_vin():
-    coordinator = ZeekrCoordinator(hass=None, client=None, entry=None)
+async def test_get_vehicle_by_vin(hass, mock_config_entry):
+    coordinator = ZeekrCoordinator(hass=hass, client=None, entry=mock_config_entry)
     v1 = FakeVehicle("VIN1", {})
     v2 = FakeVehicle("VIN2", {})
     coordinator.vehicles = [v1, v2]
@@ -32,19 +32,19 @@ async def test_get_vehicle_by_vin():
     assert coordinator.get_vehicle_by_vin("UNKNOWN") is None
 
 
-async def test_async_update_data_fetches_list_and_status(hass):
+async def test_async_update_data_fetches_list_and_status(hass, mock_config_entry):
     v1 = FakeVehicle("VIN1", {"k": "v"})
     client = FakeClient([v1])
 
     # Provide a coordinator with our fake hass and client
-    coordinator = ZeekrCoordinator(hass=hass, client=client, entry=None)
+    coordinator = ZeekrCoordinator(hass=hass, client=client, entry=mock_config_entry)
 
     data = await coordinator._async_update_data()
     assert "VIN1" in data
     assert data["VIN1"] == {"k": "v"}
 
 
-async def test_async_update_data_fetches_charging_status_when_charging(hass):
+async def test_async_update_data_fetches_charging_status_when_charging(hass, mock_config_entry):
     """Test that charging status is fetched when vehicle is charging."""
     status = {
         "additionalVehicleStatus": {
@@ -61,7 +61,7 @@ async def test_async_update_data_fetches_charging_status_when_charging(hass):
     v1 = FakeVehicle("VIN1", status, charging_status)
     client = FakeClient([v1])
 
-    coordinator = ZeekrCoordinator(hass=hass, client=client, entry=None)
+    coordinator = ZeekrCoordinator(hass=hass, client=client, entry=mock_config_entry)
 
     data = await coordinator._async_update_data()
     assert "VIN1" in data
@@ -69,7 +69,7 @@ async def test_async_update_data_fetches_charging_status_when_charging(hass):
     assert data["VIN1"]["chargingStatus"]["chargeVoltage"] == "222.0"
 
 
-async def test_async_update_data_skips_charging_status_when_not_charging(hass):
+async def test_async_update_data_skips_charging_status_when_not_charging(hass, mock_config_entry):
     """Test that charging status is not fetched when vehicle is not charging."""
     status = {
         "additionalVehicleStatus": {
@@ -79,7 +79,7 @@ async def test_async_update_data_skips_charging_status_when_not_charging(hass):
     v1 = FakeVehicle("VIN1", status, None)
     client = FakeClient([v1])
 
-    coordinator = ZeekrCoordinator(hass=hass, client=client, entry=None)
+    coordinator = ZeekrCoordinator(hass=hass, client=client, entry=mock_config_entry)
 
     data = await coordinator._async_update_data()
     assert "VIN1" in data

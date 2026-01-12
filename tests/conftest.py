@@ -27,6 +27,20 @@ def hass():
 
 
 @pytest.fixture
+def mock_config_entry():
+    """Return a mock ConfigEntry for testing."""
+    class MockConfigEntry:
+        def __init__(self):
+            self.data = {
+                "polling_interval": 5,
+            }
+            self.entry_id = "test_entry_id"
+            self.title = "Test Entry"
+
+    return MockConfigEntry()
+
+
+@pytest.fixture
 def event_loop():
     loop = asyncio.new_event_loop()
     yield loop

@@ -12,8 +12,8 @@ class FakeClient:
 
 
 async def test_test_credentials_success(hass, monkeypatch):
-    # Replace ZeekrClient with FakeClient that succeeds
-    monkeypatch.setattr(config_flow, "ZeekrClient", FakeClient)
+    # Replace get_zeekr_client_class to return FakeClient that succeeds
+    monkeypatch.setattr(config_flow, "get_zeekr_client_class", lambda use_local=False: FakeClient)
     flow = config_flow.ZeekrEVAPIFlowHandler()
     flow.hass = hass
     ok = await flow._test_credentials(
@@ -32,8 +32,8 @@ async def test_test_credentials_success(hass, monkeypatch):
 
 
 async def test_test_credentials_failure(hass, monkeypatch):
-    # Replace ZeekrClient with FakeClient that raises on login
-    monkeypatch.setattr(config_flow, "ZeekrClient", lambda **kwargs: FakeClient(succeed=False))
+    # Replace get_zeekr_client_class to return FakeClient that fails on login
+    monkeypatch.setattr(config_flow, "get_zeekr_client_class", lambda use_local=False: lambda **kwargs: FakeClient(succeed=False))
     flow = config_flow.ZeekrEVAPIFlowHandler()
     flow.hass = hass
     ok = await flow._test_credentials(
