@@ -42,7 +42,7 @@ def get_zeekr_client_class(use_local: bool = False):
                 "Local zeekr_ev_api not found in custom_components. "
                 "Please install it or disable 'Use local API' option."
             ) from ex
-    
+
     # Try to import from installed package (pip)
     try:
         module = importlib.import_module("zeekr_ev_api.client")

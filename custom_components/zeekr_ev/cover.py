@@ -96,7 +96,6 @@ class ZeekrSunshade(CoordinatorEntity, CoverEntity):
             ]
         }
 
-        self.coordinator.inc_invoke()
         await self.hass.async_add_executor_job(
             vehicle.do_remote_control, command, service_id, setting
         )
@@ -119,7 +118,6 @@ class ZeekrSunshade(CoordinatorEntity, CoverEntity):
             ]
         }
 
-        self.coordinator.inc_invoke()
         await self.hass.async_add_executor_job(
             vehicle.do_remote_control, command, service_id, setting
         )

@@ -145,6 +145,7 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
             await self.hass.async_add_executor_job(
                 vehicle.do_remote_control, command, service_id, setting
             )
+
             # Schedule a delayed refresh to get updated state after car processes command
             async def delayed_refresh():
                 await asyncio.sleep(COMMAND_POLL_DELAY)
@@ -194,6 +195,7 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
             await self.hass.async_add_executor_job(
                 vehicle.do_remote_control, command, service_id, setting
             )
+
             # Schedule a delayed refresh to get updated state after car processes command
             async def delayed_refresh():
                 await asyncio.sleep(COMMAND_POLL_DELAY)
