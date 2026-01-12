@@ -237,11 +237,21 @@ class ZeekrAPIStatusSensor(CoordinatorEntity, SensorEntity):
         self._attr_icon = "mdi:api"
 
     @property
+    def device_info(self):
+        """Return device info to associate with main Zeekr API device."""
+        return {
+            "identifiers": {(DOMAIN, self._entry_id)},
+            "name": "Zeekr API",
+            "manufacturer": "Zeekr",
+            "model": "API Integration",
+        }
+
+    @property
     def native_value(self):
         """Return the state of the sensor."""
         if self.coordinator.client and self.coordinator.client.logged_in:
-            return "connected"
-        return "disconnected"
+            return "Connected"
+        return "Disconnected"
 
     @property
     def extra_state_attributes(self):
@@ -301,6 +311,16 @@ class ZeekrAPIStatSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self):
+        return {
+            "identifiers": {(DOMAIN, self._entry_id)},
+            "name": "Zeekr API",
+            "manufacturer": "Zeekr",
+            "model": "API Integration",
+        }
+
+    @property
+    def device_info(self):
+        """Return device info."""
         return {
             "identifiers": {(DOMAIN, self._entry_id)},
             "name": "Zeekr API",
