@@ -311,15 +311,6 @@ class ZeekrAPIStatSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def device_info(self):
-        return {
-            "identifiers": {(DOMAIN, self._entry_id)},
-            "name": "Zeekr API",
-            "manufacturer": "Zeekr",
-            "model": "API Integration",
-        }
-
-    @property
-    def device_info(self):
         """Return device info."""
         return {
             "identifiers": {(DOMAIN, self._entry_id)},
