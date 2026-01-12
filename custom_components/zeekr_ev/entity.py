@@ -11,7 +11,6 @@ from .coordinator import ZeekrCoordinator
 import logging
 _LOGGER = logging.getLogger(__name__)
 
-
 class ZeekrEntity(CoordinatorEntity[ZeekrCoordinator]):
     """Base entity for Zeekr."""
 

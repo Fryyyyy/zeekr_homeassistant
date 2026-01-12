@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 from datetime import timedelta
+import importlib
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 
-from .const import CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL, DOMAIN
+from .const import CONF_POLLING_INTERVAL, CONF_USE_LOCAL_API, DEFAULT_POLLING_INTERVAL, DOMAIN
 from .request_stats import ZeekrRequestStats
 
 if TYPE_CHECKING:
@@ -52,6 +53,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
 
     def _setup_daily_reset(self):
         import homeassistant.helpers.event as event
+        from datetime import time as dtime
         if self._unsub_reset:
             self._unsub_reset()
         self._unsub_reset = event.async_track_time_change(
