@@ -2,12 +2,14 @@ import pytest
 from unittest.mock import MagicMock
 from custom_components.zeekr_ev.lock import ZeekrLock
 
+
 class MockVehicle:
     def __init__(self, vin):
         self.vin = vin
 
     def do_remote_control(self, command, service_id, setting):
         return True
+
 
 class MockCoordinator:
     def __init__(self, data):
@@ -23,6 +25,7 @@ class MockCoordinator:
     async def async_request_refresh(self):
         pass
 
+
 class DummyHass:
     def __init__(self):
         self.loop = MagicMock()
@@ -34,9 +37,11 @@ class DummyHass:
     def async_create_task(self, task):
         pass
 
+
 class DummyCoordinator:
     def __init__(self, data):
         self.data = data
+
 
 # Keeping existing tests...
 def test_is_locked_none_when_missing():
@@ -91,7 +96,7 @@ async def test_lock_optimistic_update_central_locking():
         vin: {
             "additionalVehicleStatus": {
                 "drivingSafetyStatus": {
-                    "centralLockingStatus": "0" # Unlocked
+                    "centralLockingStatus": "0"  # Unlocked
                 }
             }
         }
@@ -125,7 +130,7 @@ async def test_lock_optimistic_update_charge_lid():
         vin: {
             "additionalVehicleStatus": {
                 "electricVehicleStatus": {
-                    "chargeLidDcAcStatus": "1" # Open/Unlocked
+                    "chargeLidDcAcStatus": "1"  # Open/Unlocked
                 }
             }
         }
@@ -142,12 +147,12 @@ async def test_lock_optimistic_update_charge_lid():
     await lock.async_lock()
 
     status = coordinator.data[vin]["additionalVehicleStatus"]["electricVehicleStatus"]
-    assert status["chargeLidDcAcStatus"] == "2" # Closed/Locked
+    assert status["chargeLidDcAcStatus"] == "2"  # Closed/Locked
     lock.async_write_ha_state.assert_called()
 
     # Test Unlock (Open)
     await lock.async_unlock()
 
     status = coordinator.data[vin]["additionalVehicleStatus"]["electricVehicleStatus"]
-    assert status["chargeLidDcAcStatus"] == "1" # Open/Unlocked
+    assert status["chargeLidDcAcStatus"] == "1"  # Open/Unlocked
     lock.async_write_ha_state.assert_called()

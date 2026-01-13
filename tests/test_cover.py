@@ -2,12 +2,14 @@ from unittest.mock import MagicMock
 import pytest
 from custom_components.zeekr_ev.cover import ZeekrSunshade
 
+
 class MockVehicle:
     def __init__(self, vin):
         self.vin = vin
 
     def do_remote_control(self, command, service_id, setting):
         return True
+
 
 class MockCoordinator:
     def __init__(self, data):
@@ -23,6 +25,7 @@ class MockCoordinator:
     async def async_request_refresh(self):
         pass
 
+
 @pytest.mark.asyncio
 async def test_sunshade_optimistic_update(hass):
     vin = "VIN1"
@@ -30,7 +33,7 @@ async def test_sunshade_optimistic_update(hass):
         vin: {
             "additionalVehicleStatus": {
                 "climateStatus": {
-                    "curtainOpenStatus": "1", # Closed
+                    "curtainOpenStatus": "1",  # Closed
                     "curtainPos": 0
                 }
             }
