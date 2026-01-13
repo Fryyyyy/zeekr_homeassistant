@@ -146,6 +146,9 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
                 vehicle.do_remote_control, command, service_id, setting
             )
 
+            self._update_local_state_optimistically(locked=True)
+            self.async_write_ha_state()
+
             # Schedule a delayed refresh to get updated state after car processes command
             async def delayed_refresh():
                 await asyncio.sleep(COMMAND_POLL_DELAY)
@@ -196,11 +199,32 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
                 vehicle.do_remote_control, command, service_id, setting
             )
 
+            self._update_local_state_optimistically(locked=False)
+            self.async_write_ha_state()
+
             # Schedule a delayed refresh to get updated state after car processes command
             async def delayed_refresh():
                 await asyncio.sleep(COMMAND_POLL_DELAY)
                 await self.coordinator.async_request_refresh()
             self.hass.async_create_task(delayed_refresh())
+
+    def _update_local_state_optimistically(self, locked: bool) -> None:
+        """Update the coordinator data to reflect the change immediately."""
+        data = self.coordinator.data.get(self.vin)
+        if not data:
+            return
+
+        status = (
+            data.setdefault("additionalVehicleStatus", {})
+            .setdefault(self.category, {})
+        )
+
+        if self.field == "centralLockingStatus":
+            # Locked="1", Unlocked="0"
+            status[self.field] = "1" if locked else "0"
+        elif self.field == "chargeLidDcAcStatus":
+            # Locked (Closed)="2", Unlocked (Open)="1"
+            status[self.field] = "2" if locked else "1"
 
     @property
     def device_info(self):

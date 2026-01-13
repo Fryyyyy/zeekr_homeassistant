@@ -100,6 +100,8 @@ class ZeekrSunshade(CoordinatorEntity, CoverEntity):
         await self.hass.async_add_executor_job(
             vehicle.do_remote_control, command, service_id, setting
         )
+        self._update_local_state_optimistically(is_open=True)
+        self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
 
     async def async_close_cover(self, **kwargs: Any) -> None:
@@ -123,7 +125,27 @@ class ZeekrSunshade(CoordinatorEntity, CoverEntity):
         await self.hass.async_add_executor_job(
             vehicle.do_remote_control, command, service_id, setting
         )
+        self._update_local_state_optimistically(is_open=False)
+        self.async_write_ha_state()
         await self.coordinator.async_request_refresh()
+
+    def _update_local_state_optimistically(self, is_open: bool) -> None:
+        """Update the coordinator data to reflect the change immediately."""
+        data = self.coordinator.data.get(self.vin)
+        if not data:
+            return
+
+        climate_status = (
+            data.setdefault("additionalVehicleStatus", {})
+            .setdefault("climateStatus", {})
+        )
+
+        if is_open:
+            climate_status["curtainOpenStatus"] = "2"
+            climate_status["curtainPos"] = 100
+        else:
+            climate_status["curtainOpenStatus"] = "1"
+            climate_status["curtainPos"] = 0
 
     @property
     def device_info(self):
