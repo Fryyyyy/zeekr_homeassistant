@@ -22,8 +22,12 @@ class FakeClient:
         return self._vehicles
 
 
-async def test_get_vehicle_by_vin(hass, mock_config_entry):
-    coordinator = ZeekrCoordinator(hass=hass, client=None, entry=mock_config_entry)
+async def test_get_vehicle_by_vin(hass, mock_config_entry, monkeypatch):
+    # Mock the daily reset setup to avoid Home Assistant event system issues in tests
+    monkeypatch.setattr(ZeekrCoordinator, "_setup_daily_reset", lambda self: None)
+
+    client = FakeClient([])
+    coordinator = ZeekrCoordinator(hass=hass, client=client, entry=mock_config_entry)
     v1 = FakeVehicle("VIN1", {})
     v2 = FakeVehicle("VIN2", {})
     coordinator.vehicles = [v1, v2]
@@ -32,7 +36,10 @@ async def test_get_vehicle_by_vin(hass, mock_config_entry):
     assert coordinator.get_vehicle_by_vin("UNKNOWN") is None
 
 
-async def test_async_update_data_fetches_list_and_status(hass, mock_config_entry):
+async def test_async_update_data_fetches_list_and_status(hass, mock_config_entry, monkeypatch):
+    # Mock the daily reset setup to avoid Home Assistant event system issues in tests
+    monkeypatch.setattr(ZeekrCoordinator, "_setup_daily_reset", lambda self: None)
+
     v1 = FakeVehicle("VIN1", {"k": "v"})
     client = FakeClient([v1])
 
@@ -44,8 +51,11 @@ async def test_async_update_data_fetches_list_and_status(hass, mock_config_entry
     assert data["VIN1"] == {"k": "v"}
 
 
-async def test_async_update_data_fetches_charging_status_when_charging(hass, mock_config_entry):
+async def test_async_update_data_fetches_charging_status_when_charging(hass, mock_config_entry, monkeypatch):
     """Test that charging status is fetched when vehicle is charging."""
+    # Mock the daily reset setup to avoid Home Assistant event system issues in tests
+    monkeypatch.setattr(ZeekrCoordinator, "_setup_daily_reset", lambda self: None)
+
     status = {
         "additionalVehicleStatus": {
             "electricVehicleStatus": {"isCharging": True}
@@ -69,8 +79,11 @@ async def test_async_update_data_fetches_charging_status_when_charging(hass, moc
     assert data["VIN1"]["chargingStatus"]["chargeVoltage"] == "222.0"
 
 
-async def test_async_update_data_skips_charging_status_when_not_charging(hass, mock_config_entry):
+async def test_async_update_data_skips_charging_status_when_not_charging(hass, mock_config_entry, monkeypatch):
     """Test that charging status is not fetched when vehicle is not charging."""
+    # Mock the daily reset setup to avoid Home Assistant event system issues in tests
+    monkeypatch.setattr(ZeekrCoordinator, "_setup_daily_reset", lambda self: None)
+
     status = {
         "additionalVehicleStatus": {
             "electricVehicleStatus": {"isCharging": False}

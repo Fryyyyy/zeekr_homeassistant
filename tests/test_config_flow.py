@@ -3,7 +3,7 @@ from custom_components.zeekr_ev.const import CONF_POLLING_INTERVAL, DEFAULT_POLL
 
 
 class FakeClient:
-    def __init__(self, succeed=True):
+    def __init__(self, succeed=True, **kwargs):
         self.succeed = succeed
 
     def login(self):
