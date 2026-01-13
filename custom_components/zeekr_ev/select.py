@@ -71,25 +71,25 @@ async def async_setup_entry(
                 status_keys=["passHeatingSts"],
             )
         )
-        # Heat - Driver Rear (Right Rear)
+        # Heat - Rear Right
         entities.append(
             ZeekrSeatSelect(
                 coordinator,
                 vin,
-                "seat_heat_rear_driver",
-                "Driver Rear Seat Heat",
+                "seat_heat_rear_right",
+                "Rear Right Seat Heat",
                 "SH.29",
                 "heat",
                 status_keys=["rrHeatingSts"],
             )
         )
-        # Heat - Passenger Rear (Left Rear)
+        # Heat - Rear Left
         entities.append(
             ZeekrSeatSelect(
                 coordinator,
                 vin,
-                "seat_heat_rear_passenger",
-                "Passenger Rear Seat Heat",
+                "seat_heat_rear_left",
+                "Rear Left Seat Heat",
                 "SH.21",
                 "heat",
                 status_keys=["rlHeatingSts"],
