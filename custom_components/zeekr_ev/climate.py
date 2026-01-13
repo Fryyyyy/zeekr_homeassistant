@@ -98,6 +98,7 @@ class ZeekrClimate(CoordinatorEntity, ClimateEntity):
 
         if hvac_mode == HVACMode.HEAT_COOL:
             # Turn ON
+            duration = getattr(self.coordinator, "ac_duration", 15)
             setting = {
                 "serviceParameters": [
                     {
@@ -110,7 +111,7 @@ class ZeekrClimate(CoordinatorEntity, ClimateEntity):
                     },
                     {
                         "key": "AC.duration",
-                        "value": "15"  # Default 15 minutes
+                        "value": str(duration)
                     }
                 ]
             }
@@ -130,7 +131,28 @@ class ZeekrClimate(CoordinatorEntity, ClimateEntity):
             await self.hass.async_add_executor_job(
                 vehicle.do_remote_control, command, service_id, setting
             )
+
+            # Optimistic update
+            self._update_local_state_optimistically(hvac_mode)
+            self.async_write_ha_state()
+
             await self.coordinator.async_request_refresh()
+
+    def _update_local_state_optimistically(self, hvac_mode: HVACMode) -> None:
+        """Update the coordinator data to reflect the change immediately."""
+        data = self.coordinator.data.get(self.vin)
+        if not data:
+            return
+
+        climate_status = (
+            data.setdefault("additionalVehicleStatus", {})
+            .setdefault("climateStatus", {})
+        )
+
+        if hvac_mode == HVACMode.HEAT_COOL:
+            climate_status["preClimateActive"] = "1"
+        else:
+            climate_status["preClimateActive"] = "0"
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
         """Set new target temperature."""
