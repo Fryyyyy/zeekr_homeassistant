@@ -1,3 +1,4 @@
+import pytest
 from custom_components.zeekr_ev.coordinator import ZeekrCoordinator
 
 
@@ -22,6 +23,7 @@ class FakeClient:
         return self._vehicles
 
 
+@pytest.mark.asyncio
 async def test_get_vehicle_by_vin(hass, mock_config_entry, monkeypatch):
     # Mock the daily reset setup to avoid Home Assistant event system issues in tests
     monkeypatch.setattr(ZeekrCoordinator, "_setup_daily_reset", lambda self: None)
@@ -36,6 +38,7 @@ async def test_get_vehicle_by_vin(hass, mock_config_entry, monkeypatch):
     assert coordinator.get_vehicle_by_vin("UNKNOWN") is None
 
 
+@pytest.mark.asyncio
 async def test_async_update_data_fetches_list_and_status(hass, mock_config_entry, monkeypatch):
     # Mock the daily reset setup to avoid Home Assistant event system issues in tests
     monkeypatch.setattr(ZeekrCoordinator, "_setup_daily_reset", lambda self: None)
@@ -51,6 +54,7 @@ async def test_async_update_data_fetches_list_and_status(hass, mock_config_entry
     assert data["VIN1"] == {"k": "v"}
 
 
+@pytest.mark.asyncio
 async def test_async_update_data_fetches_charging_status_when_charging(hass, mock_config_entry, monkeypatch):
     """Test that charging status is fetched when vehicle is charging."""
     # Mock the daily reset setup to avoid Home Assistant event system issues in tests
@@ -58,7 +62,7 @@ async def test_async_update_data_fetches_charging_status_when_charging(hass, moc
 
     status = {
         "additionalVehicleStatus": {
-            "electricVehicleStatus": {"isCharging": True}
+            "electricVehicleStatus": {"isCharging": True, "chargerState": "1"}
         }
     }
     charging_status = {
@@ -79,6 +83,7 @@ async def test_async_update_data_fetches_charging_status_when_charging(hass, moc
     assert data["VIN1"]["chargingStatus"]["chargeVoltage"] == "222.0"
 
 
+@pytest.mark.asyncio
 async def test_async_update_data_skips_charging_status_when_not_charging(hass, mock_config_entry, monkeypatch):
     """Test that charging status is not fetched when vehicle is not charging."""
     # Mock the daily reset setup to avoid Home Assistant event system issues in tests
