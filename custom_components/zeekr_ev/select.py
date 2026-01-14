@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -209,7 +211,7 @@ class ZeekrSeatSelect(CoordinatorEntity, SelectEntity):
         service_id = "ZAF"
 
         # Build setting payload
-        setting = {"serviceParameters": []}
+        setting: dict[str, Any] = {"serviceParameters": []}
 
         # Helper to set params
         params = []

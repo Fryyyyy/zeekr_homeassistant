@@ -88,6 +88,7 @@ def test_is_locked_charge_lid_logic():
     lk = ZeekrLock(coordinator, "VIN1", "chargeLidDcAcStatus", "Charge Lid", "electricVehicleStatus")
     assert lk.is_locked is True
 
+
 # New async tests
 @pytest.mark.asyncio
 async def test_lock_optimistic_update_central_locking():
@@ -122,6 +123,7 @@ async def test_lock_optimistic_update_central_locking():
     status = coordinator.data[vin]["additionalVehicleStatus"]["drivingSafetyStatus"]
     assert status["centralLockingStatus"] == "0"
     lock.async_write_ha_state.assert_called()
+
 
 @pytest.mark.asyncio
 async def test_lock_optimistic_update_charge_lid():
