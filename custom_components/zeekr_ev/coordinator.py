@@ -40,7 +40,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         # Shared settings for command durations
         self.seat_duration = 15
         self.ac_duration = 15
-        self.request_stats = ZeekrRequestStats()
+        self.request_stats = ZeekrRequestStats(hass)
         polling_interval = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL)
         super().__init__(
             hass,
@@ -61,8 +61,12 @@ class ZeekrCoordinator(DataUpdateCoordinator):
             self.hass, self._handle_daily_reset, hour=0, minute=0, second=0
         )
 
+    async def async_init_stats(self):
+        """Initialize stats (load from storage)."""
+        await self.request_stats.async_load()
+
     async def _handle_daily_reset(self, now):
-        self.request_stats.reset_today()
+        await self.request_stats.async_reset_today()
 
     def get_vehicle_by_vin(self, vin: str) -> Vehicle | None:
         """Get a vehicle by VIN."""
@@ -74,7 +78,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict[str, dict]:
         """Fetch data from API endpoint."""
         try:
-            self.request_stats.inc_request()
+            await self.request_stats.async_inc_request()
             # Refresh vehicle list if empty (first run)
             if not self.vehicles:
                 self.vehicles = await self.hass.async_add_executor_job(
@@ -104,5 +108,5 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         else:
             return data
 
-    def inc_invoke(self):
-        self.request_stats.inc_invoke()
+    async def async_inc_invoke(self):
+        await self.request_stats.async_inc_invoke()

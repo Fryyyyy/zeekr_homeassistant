@@ -117,6 +117,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
             raise ConfigEntryNotReady from ex
 
     coordinator = ZeekrCoordinator(hass, client=client, entry=entry)
+    await coordinator.async_init_stats()
     await coordinator.async_config_entry_first_refresh()
 
     if coordinator.vehicles:

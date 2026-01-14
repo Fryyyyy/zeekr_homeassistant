@@ -227,7 +227,7 @@ class ZeekrSeatSelect(CoordinatorEntity, SelectEntity):
 
         setting["serviceParameters"] = params
 
-        self.coordinator.inc_invoke()
+        await self.coordinator.async_inc_invoke()
         await self.hass.async_add_executor_job(
             vehicle.do_remote_control, command, service_id, setting
         )
