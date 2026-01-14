@@ -2,7 +2,8 @@
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, timedelta
-from custom_components.zeekr_ev.request_stats import ZeekrRequestStats, STORAGE_KEY, STORAGE_VERSION
+from custom_components.zeekr_ev.request_stats import ZeekrRequestStats
+
 
 @pytest.fixture
 def mock_store(hass):
@@ -13,12 +14,14 @@ def mock_store(hass):
         mock_store_cls.return_value = mock_store_instance
         yield mock_store_instance
 
+
 @pytest.mark.asyncio
 async def test_request_stats_init(hass, mock_store):
     stats = ZeekrRequestStats(hass)
     assert stats.api_requests_today == 0
     assert stats.api_invokes_today == 0
     assert stats._loaded is False
+
 
 @pytest.mark.asyncio
 async def test_request_stats_load_existing(hass, mock_store):
@@ -37,6 +40,7 @@ async def test_request_stats_load_existing(hass, mock_store):
     assert stats.api_invokes_today == 5
     assert stats.api_requests_total == 100
     assert stats._loaded is True
+
 
 @pytest.mark.asyncio
 async def test_request_stats_load_reset_needed(hass, mock_store):
@@ -58,6 +62,7 @@ async def test_request_stats_load_reset_needed(hass, mock_store):
     # Check save called for reset
     assert mock_store.async_save.called
 
+
 @pytest.mark.asyncio
 async def test_inc_request(hass, mock_store):
     # Setup default return value for load to avoid MagicMock pollution
@@ -70,6 +75,7 @@ async def test_inc_request(hass, mock_store):
     assert stats.api_requests_today == 1
     assert stats.api_requests_total == 1
     assert mock_store.async_save.called
+
 
 @pytest.mark.asyncio
 async def test_inc_invoke(hass, mock_store):
