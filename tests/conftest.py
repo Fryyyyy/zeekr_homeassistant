@@ -1,6 +1,5 @@
 import asyncio
 import pytest
-from unittest.mock import MagicMock
 
 
 class DummyConfigEntries:
