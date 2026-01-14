@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 import pytest
 from custom_components.zeekr_ev.cover import ZeekrSunshade, async_setup_entry
 from custom_components.zeekr_ev.const import DOMAIN
@@ -18,6 +18,7 @@ class MockCoordinator:
         self.vehicles = {}
         self.seat_duration = 15
         self.ac_duration = 15
+        self.async_inc_invoke = AsyncMock()
 
     def get_vehicle_by_vin(self, vin):
         return self.vehicles.get(vin)

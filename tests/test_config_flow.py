@@ -1,3 +1,4 @@
+import pytest
 import custom_components.zeekr_ev.config_flow as config_flow
 from custom_components.zeekr_ev.const import CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL
 
@@ -11,6 +12,7 @@ class FakeClient:
             raise Exception("bad creds")
 
 
+@pytest.mark.asyncio
 async def test_test_credentials_success(hass, monkeypatch):
     # Replace get_zeekr_client_class to return FakeClient that succeeds
     monkeypatch.setattr(config_flow, "get_zeekr_client_class", lambda use_local=False: FakeClient)
@@ -31,6 +33,7 @@ async def test_test_credentials_success(hass, monkeypatch):
     assert flow._temp_client is not None
 
 
+@pytest.mark.asyncio
 async def test_test_credentials_failure(hass, monkeypatch):
     # Replace get_zeekr_client_class to return FakeClient that fails on login
     monkeypatch.setattr(config_flow, "get_zeekr_client_class", lambda use_local=False: lambda **kwargs: FakeClient(succeed=False))

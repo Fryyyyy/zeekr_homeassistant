@@ -1,5 +1,5 @@
+from unittest.mock import MagicMock, AsyncMock
 import pytest
-from unittest.mock import MagicMock
 from custom_components.zeekr_ev.lock import ZeekrLock, async_setup_entry
 from custom_components.zeekr_ev.const import DOMAIN
 
@@ -16,6 +16,7 @@ class MockCoordinator:
     def __init__(self, data):
         self.data = data
         self.vehicles = {}
+        self.async_inc_invoke = AsyncMock()
 
     def get_vehicle_by_vin(self, vin):
         return self.vehicles.get(vin)
@@ -27,10 +28,19 @@ class MockCoordinator:
         pass
 
 
+class DummyConfig:
+    def __init__(self):
+        self.config_dir = "/tmp/dummy_config_dir"
+
+    def path(self, *args):
+        return "/tmp/dummy_path"
+
+
 class DummyHass:
     def __init__(self):
         self.loop = MagicMock()
         self.loop.create_task = MagicMock()
+        self.config = DummyConfig()
 
     async def async_add_executor_job(self, func, *args, **kwargs):
         return func(*args, **kwargs)

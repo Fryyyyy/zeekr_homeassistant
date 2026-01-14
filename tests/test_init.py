@@ -1,3 +1,4 @@
+import pytest
 from custom_components.zeekr_ev import async_setup_entry
 
 
@@ -10,6 +11,7 @@ class DummyEntry:
         pass
 
 
+@pytest.mark.asyncio
 async def test_async_setup_entry_missing_credentials(hass):
     entry = DummyEntry(data={})
     res = await async_setup_entry(hass, entry)

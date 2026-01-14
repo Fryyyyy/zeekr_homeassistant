@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 import pytest
 from custom_components.zeekr_ev.switch import ZeekrSwitch, async_setup_entry
 from custom_components.zeekr_ev.const import DOMAIN
@@ -16,6 +16,7 @@ class MockCoordinator:
     def __init__(self, data):
         self.data = data
         self.vehicles = {}
+        self.async_inc_invoke = AsyncMock()
 
     def get_vehicle_by_vin(self, vin):
         return self.vehicles.get(vin)
@@ -27,7 +28,18 @@ class MockCoordinator:
         pass
 
 
+class DummyConfig:
+    def __init__(self):
+        self.config_dir = "/tmp/dummy_config_dir"
+
+    def path(self, *args):
+        return "/tmp/dummy_path"
+
+
 class DummyHass:
+    def __init__(self):
+        self.config = DummyConfig()
+
     async def async_add_executor_job(self, func, *args, **kwargs):
         return func(*args, **kwargs)
 
