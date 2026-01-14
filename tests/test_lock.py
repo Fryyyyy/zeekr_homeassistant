@@ -1,6 +1,7 @@
 import pytest
 from unittest.mock import MagicMock
-from custom_components.zeekr_ev.lock import ZeekrLock
+from custom_components.zeekr_ev.lock import ZeekrLock, async_setup_entry
+from custom_components.zeekr_ev.const import DOMAIN
 
 
 class MockVehicle:
@@ -159,3 +160,31 @@ async def test_lock_optimistic_update_charge_lid():
     status = coordinator.data[vin]["additionalVehicleStatus"]["electricVehicleStatus"]
     assert status["chargeLidDcAcStatus"] == "1"  # Open/Unlocked
     lock.async_write_ha_state.assert_called()
+
+@pytest.mark.asyncio
+async def test_lock_no_vehicle(hass):
+    coordinator = MockCoordinator({"VIN1": {}})
+    lock = ZeekrLock(coordinator, "VIN1", "centralLockingStatus", "Label", "drivingSafetyStatus")
+
+    # Should safely return
+    await lock.async_lock()
+    await lock.async_unlock()
+
+@pytest.mark.asyncio
+async def test_lock_device_info(hass):
+    coordinator = MockCoordinator({"VIN1": {}})
+    lock = ZeekrLock(coordinator, "VIN1", "field", "Label", "cat")
+    assert lock.device_info["identifiers"] == {(DOMAIN, "VIN1")}
+
+@pytest.mark.asyncio
+async def test_lock_async_setup_entry(hass, mock_config_entry):
+    coordinator = MockCoordinator({"VIN1": {}})
+    hass.data[DOMAIN] = {mock_config_entry.entry_id: coordinator}
+
+    async_add_entities = MagicMock()
+
+    await async_setup_entry(hass, mock_config_entry, async_add_entities)
+
+    assert async_add_entities.called
+    assert len(async_add_entities.call_args[0][0]) > 0
+    assert isinstance(async_add_entities.call_args[0][0][0], ZeekrLock)

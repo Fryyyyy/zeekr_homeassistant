@@ -1,6 +1,7 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 import pytest
-from custom_components.zeekr_ev.cover import ZeekrSunshade
+from custom_components.zeekr_ev.cover import ZeekrSunshade, async_setup_entry
+from custom_components.zeekr_ev.const import DOMAIN
 
 
 class MockVehicle:
@@ -15,6 +16,8 @@ class MockCoordinator:
     def __init__(self, data):
         self.data = data
         self.vehicles = {}
+        self.seat_duration = 15
+        self.ac_duration = 15
 
     def get_vehicle_by_vin(self, vin):
         return self.vehicles.get(vin)
@@ -45,13 +48,11 @@ async def test_sunshade_optimistic_update(hass):
 
     sunshade = ZeekrSunshade(coordinator, vin)
     sunshade.hass = hass
-    # Mock async_write_ha_state since we are not fully integrating with HA
     sunshade.async_write_ha_state = MagicMock()
 
     # Test open
     await sunshade.async_open_cover()
 
-    # Check data update
     climate_status = coordinator.data[vin]["additionalVehicleStatus"]["climateStatus"]
     assert climate_status["curtainOpenStatus"] == "2"
     assert climate_status["curtainPos"] == 100
@@ -64,3 +65,45 @@ async def test_sunshade_optimistic_update(hass):
     assert climate_status["curtainOpenStatus"] == "1"
     assert climate_status["curtainPos"] == 0
     sunshade.async_write_ha_state.assert_called()
+
+@pytest.mark.asyncio
+async def test_sunshade_properties_missing_data(hass):
+    vin = "VIN1"
+    coordinator = MockCoordinator({})
+    sunshade = ZeekrSunshade(coordinator, vin)
+
+    assert sunshade.is_closed is None
+    assert sunshade.current_cover_position is None
+
+@pytest.mark.asyncio
+async def test_sunshade_async_commands_no_vehicle(hass):
+    vin = "VIN1"
+    coordinator = MockCoordinator({})
+    sunshade = ZeekrSunshade(coordinator, vin)
+
+    # Should safely return without error
+    await sunshade.async_open_cover()
+    await sunshade.async_close_cover()
+
+@pytest.mark.asyncio
+async def test_sunshade_device_info(hass):
+    vin = "VIN1"
+    coordinator = MockCoordinator({})
+    sunshade = ZeekrSunshade(coordinator, vin)
+
+    info = sunshade.device_info
+    assert info["identifiers"] == {(DOMAIN, vin)}
+    assert info["name"] == "Zeekr VIN1"
+
+@pytest.mark.asyncio
+async def test_cover_async_setup_entry(hass, mock_config_entry):
+    coordinator = MockCoordinator({"VIN1": {}})
+    hass.data[DOMAIN] = {mock_config_entry.entry_id: coordinator}
+
+    async_add_entities = MagicMock()
+
+    await async_setup_entry(hass, mock_config_entry, async_add_entities)
+
+    assert async_add_entities.called
+    assert len(async_add_entities.call_args[0][0]) == 1
+    assert isinstance(async_add_entities.call_args[0][0][0], ZeekrSunshade)

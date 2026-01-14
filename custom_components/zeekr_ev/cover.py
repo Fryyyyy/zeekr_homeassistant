@@ -56,6 +56,8 @@ class ZeekrSunshade(CoordinatorEntity, CoverEntity):
                 .get("climateStatus", {})
                 .get("curtainOpenStatus")
             )
+            if val is None:
+                return None
             # User: "2" (open), "1" (closed)
             # is_closed expects True if closed
             return str(val) == "1"

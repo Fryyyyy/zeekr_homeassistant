@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 import pytest
-from custom_components.zeekr_ev.switch import ZeekrSwitch
+from custom_components.zeekr_ev.switch import ZeekrSwitch, async_setup_entry
+from custom_components.zeekr_ev.const import DOMAIN
 
 
 class MockVehicle:
@@ -64,3 +65,36 @@ async def test_switch_optimistic_update():
     climate_status = coordinator.data[vin]["additionalVehicleStatus"]["climateStatus"]
     assert climate_status["defrost"] == "0"
     switch.async_write_ha_state.assert_called()
+
+@pytest.mark.asyncio
+async def test_switch_properties_missing_data(hass):
+    coordinator = MockCoordinator({"VIN1": {}})
+    switch = ZeekrSwitch(coordinator, "VIN1", "defrost", "Label")
+    assert switch.is_on is None
+
+@pytest.mark.asyncio
+async def test_switch_no_vehicle(hass):
+    coordinator = MockCoordinator({"VIN1": {}})
+    switch = ZeekrSwitch(coordinator, "VIN1", "defrost", "Label")
+    # Should safely return
+    await switch.async_turn_on()
+    await switch.async_turn_off()
+
+@pytest.mark.asyncio
+async def test_switch_device_info(hass):
+    coordinator = MockCoordinator({"VIN1": {}})
+    switch = ZeekrSwitch(coordinator, "VIN1", "defrost", "Label")
+    assert switch.device_info["identifiers"] == {(DOMAIN, "VIN1")}
+
+@pytest.mark.asyncio
+async def test_switch_async_setup_entry(hass, mock_config_entry):
+    coordinator = MockCoordinator({"VIN1": {}})
+    hass.data[DOMAIN] = {mock_config_entry.entry_id: coordinator}
+
+    async_add_entities = MagicMock()
+
+    await async_setup_entry(hass, mock_config_entry, async_add_entities)
+
+    assert async_add_entities.called
+    assert len(async_add_entities.call_args[0][0]) == 1
+    assert isinstance(async_add_entities.call_args[0][0][0], ZeekrSwitch)

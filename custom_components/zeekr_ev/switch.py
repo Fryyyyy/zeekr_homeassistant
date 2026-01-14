@@ -56,6 +56,8 @@ class ZeekrSwitch(CoordinatorEntity, SwitchEntity):
                 .get("climateStatus", {})
                 .get(self.field)
             )
+            if val is None:
+                return None
             # User: "1" (on), "0" (off)
             return str(val) == "1"
         except (ValueError, TypeError, AttributeError):
