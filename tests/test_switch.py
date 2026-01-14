@@ -66,11 +66,13 @@ async def test_switch_optimistic_update():
     assert climate_status["defrost"] == "0"
     switch.async_write_ha_state.assert_called()
 
+
 @pytest.mark.asyncio
 async def test_switch_properties_missing_data(hass):
     coordinator = MockCoordinator({"VIN1": {}})
     switch = ZeekrSwitch(coordinator, "VIN1", "defrost", "Label")
     assert switch.is_on is None
+
 
 @pytest.mark.asyncio
 async def test_switch_no_vehicle(hass):
@@ -80,11 +82,13 @@ async def test_switch_no_vehicle(hass):
     await switch.async_turn_on()
     await switch.async_turn_off()
 
+
 @pytest.mark.asyncio
 async def test_switch_device_info(hass):
     coordinator = MockCoordinator({"VIN1": {}})
     switch = ZeekrSwitch(coordinator, "VIN1", "defrost", "Label")
     assert switch.device_info["identifiers"] == {(DOMAIN, "VIN1")}
+
 
 @pytest.mark.asyncio
 async def test_switch_async_setup_entry(hass, mock_config_entry):

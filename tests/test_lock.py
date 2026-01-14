@@ -161,6 +161,7 @@ async def test_lock_optimistic_update_charge_lid():
     assert status["chargeLidDcAcStatus"] == "1"  # Open/Unlocked
     lock.async_write_ha_state.assert_called()
 
+
 @pytest.mark.asyncio
 async def test_lock_no_vehicle(hass):
     coordinator = MockCoordinator({"VIN1": {}})
@@ -170,11 +171,13 @@ async def test_lock_no_vehicle(hass):
     await lock.async_lock()
     await lock.async_unlock()
 
+
 @pytest.mark.asyncio
 async def test_lock_device_info(hass):
     coordinator = MockCoordinator({"VIN1": {}})
     lock = ZeekrLock(coordinator, "VIN1", "field", "Label", "cat")
     assert lock.device_info["identifiers"] == {(DOMAIN, "VIN1")}
+
 
 @pytest.mark.asyncio
 async def test_lock_async_setup_entry(hass, mock_config_entry):
