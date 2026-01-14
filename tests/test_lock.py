@@ -35,7 +35,8 @@ class DummyHass:
         return func(*args, **kwargs)
 
     def async_create_task(self, task):
-        pass
+        if hasattr(task, "close"):
+            task.close()
 
 
 class DummyCoordinator:
