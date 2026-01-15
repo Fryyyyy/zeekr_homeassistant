@@ -26,6 +26,15 @@ async def async_setup_entry(
     for vin in coordinator.data:
         entities.append(ZeekrSwitch(coordinator, vin, "defrost", "Defroster"))
         entities.append(ZeekrSwitch(coordinator, vin, "charging", "Charging"))
+        entities.append(
+            ZeekrSwitch(
+                coordinator,
+                vin,
+                "steering_wheel_heat",
+                "Steering Wheel Heat",
+                status_key="steerWhlHeatingSts",
+            )
+        )
 
     async_add_entities(entities)
 
@@ -41,15 +50,19 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
         vin: str,
         field: str,
         label: str,
+        status_key: str | None = None,
     ) -> None:
         """Initialize the switch entity."""
         super().__init__(coordinator)
         self.vin = vin
         self.field = field
+        self.status_key = status_key or field
         self._attr_name = f"Zeekr {vin[-4:] if vin else ''} {label}"
         self._attr_unique_id = f"{vin}_{field}"
         if field == "charging":
             self._attr_icon = "mdi:battery-off"
+        elif field == "steering_wheel_heat":
+            self._attr_icon = "mdi:steering"
 
     @property
     def is_on(self) -> bool | None:
@@ -72,11 +85,12 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                     self.coordinator.data.get(self.vin, {})
                     .get("additionalVehicleStatus", {})
                     .get("climateStatus", {})
-                    .get(self.field)
+                    .get(self.status_key)
                 )
                 if val is None:
                     return None
-                # User: "1" (on), "0" (off)
+                # User: "1" (on), "0" (off), "2" (off)
+                # For defrost and seats, usually "1" is On.
                 return str(val) == "1"
         except (ValueError, TypeError, AttributeError):
             return None
@@ -105,6 +119,24 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                     {
                         "key": "DF.level",
                         "value": "2"
+                    }
+                ]
+            }
+        elif self.field == "steering_wheel_heat":
+            duration = getattr(self.coordinator, "steering_wheel_duration", 15)
+            setting = {
+                "serviceParameters": [
+                    {
+                        "key": "SW",
+                        "value": "true"
+                    },
+                    {
+                        "key": "SW.duration",
+                        "value": str(duration)
+                    },
+                    {
+                        "key": "SW.level",
+                        "value": "3"
                     }
                 ]
             }
@@ -148,6 +180,15 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                     }
                 ]
             }
+        elif self.field == "steering_wheel_heat":
+            setting = {
+                "serviceParameters": [
+                    {
+                        "key": "SW",
+                        "value": "false"
+                    }
+                ]
+            }
 
         if setting:
             await self.coordinator.async_inc_invoke()
@@ -182,6 +223,9 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
 
             if self.field == "defrost":
                 climate_status[self.field] = "1" if is_on else "0"
+            elif self.field == "steering_wheel_heat":
+                # User says: "steerWhlHeatingSts": "1" when on, "2" when off
+                climate_status[self.status_key] = "1" if is_on else "2"
 
     @property
     def device_info(self):

@@ -40,6 +40,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         # Shared settings for command durations
         self.seat_duration = 15
         self.ac_duration = 15
+        self.steering_wheel_duration = 15
         self.request_stats = ZeekrRequestStats(hass)
         polling_interval = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL)
         super().__init__(

@@ -38,6 +38,13 @@ async def async_setup_entry(
             "AC Operation Duration",
             "ac_duration",
         ),
+        ZeekrConfigNumber(
+            coordinator,
+            entry.entry_id,
+            "steering_wheel_heat_duration",
+            "Steering Wheel Heat Duration",
+            "steering_wheel_duration",
+        ),
     ]
 
     for vehicle in coordinator.vehicles:

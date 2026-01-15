@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, AsyncMock
 import pytest
-from custom_components.zeekr_ev.cover import ZeekrSunshade, async_setup_entry
+from custom_components.zeekr_ev.cover import ZeekrSunshade, ZeekrWindows, async_setup_entry
 from custom_components.zeekr_ev.const import DOMAIN
 
 
@@ -110,5 +110,79 @@ async def test_cover_async_setup_entry(hass, mock_config_entry):
     await async_setup_entry(hass, mock_config_entry, async_add_entities)
 
     assert async_add_entities.called
-    assert len(async_add_entities.call_args[0][0]) == 1
+    assert len(async_add_entities.call_args[0][0]) == 2
     assert isinstance(async_add_entities.call_args[0][0][0], ZeekrSunshade)
+    assert isinstance(async_add_entities.call_args[0][0][1], ZeekrWindows)
+
+
+@pytest.mark.asyncio
+async def test_windows_optimistic_update(hass):
+    vin = "VIN1"
+    initial_data = {
+        vin: {
+            "additionalVehicleStatus": {
+                "climateStatus": {
+                    # All Closed
+                    "winStatusDriver": "2", "winPosDriver": 0,
+                    "winStatusPassenger": "2", "winPosPassenger": 0,
+                    "winStatusDriverRear": "2", "winPosDriverRear": 0,
+                    "winStatusPassengerRear": "2", "winPosPassengerRear": 0,
+                }
+            }
+        }
+    }
+
+    coordinator = MockCoordinator(initial_data)
+    coordinator.vehicles[vin] = MockVehicle(vin)
+
+    windows = ZeekrWindows(coordinator, vin)
+    windows.hass = hass
+    windows.async_write_ha_state = MagicMock()
+
+    assert windows.is_closed is True
+    assert windows.current_cover_position == 0
+
+    # Test Open
+    await windows.async_open_cover()
+
+    climate_status = coordinator.data[vin]["additionalVehicleStatus"]["climateStatus"]
+    assert climate_status["winStatusDriver"] == "1"
+    assert climate_status["winPosDriver"] == 100
+    assert windows.is_closed is False
+    assert windows.current_cover_position == 100
+    windows.async_write_ha_state.assert_called()
+
+    # Test Close
+    await windows.async_close_cover()
+
+    climate_status = coordinator.data[vin]["additionalVehicleStatus"]["climateStatus"]
+    assert climate_status["winStatusDriver"] == "2"
+    assert climate_status["winPosDriver"] == 0
+    assert windows.is_closed is True
+    assert windows.current_cover_position == 0
+    windows.async_write_ha_state.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_windows_mixed_state(hass):
+    vin = "VIN1"
+    initial_data = {
+        vin: {
+            "additionalVehicleStatus": {
+                "climateStatus": {
+                    # One open, others closed
+                    "winStatusDriver": "1", "winPosDriver": 100,
+                    "winStatusPassenger": "2", "winPosPassenger": 0,
+                    "winStatusDriverRear": "2", "winPosDriverRear": 0,
+                    "winStatusPassengerRear": "2", "winPosPassengerRear": 0,
+                }
+            }
+        }
+    }
+
+    coordinator = MockCoordinator(initial_data)
+    windows = ZeekrWindows(coordinator, vin)
+
+    assert windows.is_closed is False
+    # Avg pos: (100 + 0 + 0 + 0) / 4 = 25
+    assert windows.current_cover_position == 25
