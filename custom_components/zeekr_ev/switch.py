@@ -123,6 +123,7 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 ]
             }
         elif self.field == "steering_wheel_heat":
+            service_id = "ZAF"
             duration = getattr(self.coordinator, "steering_wheel_duration", 15)
             setting = {
                 "serviceParameters": [
@@ -181,6 +182,8 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 ]
             }
         elif self.field == "steering_wheel_heat":
+            command = "start"
+            service_id = "ZAF"
             setting = {
                 "serviceParameters": [
                     {

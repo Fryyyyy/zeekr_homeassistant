@@ -180,11 +180,10 @@ class ZeekrWindows(CoordinatorEntity, CoverEntity):
         climate_status = data.get("additionalVehicleStatus", {}).get("climateStatus", {})
 
         # Check all 4 windows
-        # "1" = Open?, Wait...
-        # User provided:
-        # Fully down (Open): "winStatus...": "1", "winPos...": "100"
-        # Fully up (Closed): "winStatus...": "2", "winPos...": "0"
-        # So "2" is Closed.
+        # Status code mapping based on API observations:
+        # "1" = Open (or partially open)
+        # "2" = Closed
+        # "0" = Fully Closed (Position 0%)
 
         for win in ["Driver", "Passenger", "DriverRear", "PassengerRear"]:
             status = climate_status.get(f"winStatus{win}")
