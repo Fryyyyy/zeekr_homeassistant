@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, AsyncMock
 import pytest
-from custom_components.zeekr_ev.cover import ZeekrSunshade, ZeekrWindows, async_setup_entry
+from custom_components.zeekr_ev.cover import ZeekrSunshade, ZeekrWindows, ZeekrWindow, async_setup_entry
 from custom_components.zeekr_ev.const import DOMAIN
 
 
@@ -110,9 +110,12 @@ async def test_cover_async_setup_entry(hass, mock_config_entry):
     await async_setup_entry(hass, mock_config_entry, async_add_entities)
 
     assert async_add_entities.called
-    assert len(async_add_entities.call_args[0][0]) == 2
-    assert isinstance(async_add_entities.call_args[0][0][0], ZeekrSunshade)
-    assert isinstance(async_add_entities.call_args[0][0][1], ZeekrWindows)
+    # Sunshade + All Windows + 4 Individual Windows = 6
+    assert len(async_add_entities.call_args[0][0]) == 6
+    entities = async_add_entities.call_args[0][0]
+    assert isinstance(entities[0], ZeekrSunshade)
+    assert isinstance(entities[1], ZeekrWindows)
+    assert isinstance(entities[2], ZeekrWindow)
 
 
 @pytest.mark.asyncio
@@ -186,3 +189,35 @@ async def test_windows_mixed_state(hass):
     assert windows.is_closed is False
     # Avg pos: (100 + 0 + 0 + 0) / 4 = 25
     assert windows.current_cover_position == 25
+
+@pytest.mark.asyncio
+async def test_zeekr_window_readonly(hass):
+    vin = "VIN1"
+    initial_data = {
+        vin: {
+            "additionalVehicleStatus": {
+                "climateStatus": {
+                    "winStatusDriver": "2",  # Closed
+                    "winPosDriver": 0
+                }
+            }
+        }
+    }
+
+    coordinator = MockCoordinator(initial_data)
+    window = ZeekrWindow(coordinator, vin, "Driver", "Window Driver")
+
+    # Check properties
+    assert window.is_closed is True
+    assert window.current_cover_position == 0
+
+    # Change data
+    coordinator.data[vin]["additionalVehicleStatus"]["climateStatus"]["winStatusDriver"] = "1"
+    coordinator.data[vin]["additionalVehicleStatus"]["climateStatus"]["winPosDriver"] = 50
+
+    assert window.is_closed is False
+    assert window.current_cover_position == 50
+
+    # Ensure no-op commands don't crash
+    await window.async_open_cover()
+    await window.async_close_cover()
