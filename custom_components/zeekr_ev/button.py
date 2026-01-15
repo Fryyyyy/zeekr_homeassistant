@@ -24,7 +24,7 @@ async def async_setup_entry(
     """Set up Zeekr button entities."""
     coordinator: ZeekrCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    entities = []
+    entities: list[ButtonEntity] = []
     for vehicle in coordinator.vehicles:
         entities.append(ZeekrForceUpdateButton(coordinator, vehicle.vin))
         entities.append(ZeekrFlashBlinkersButton(coordinator, vehicle.vin))

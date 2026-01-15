@@ -11,7 +11,7 @@ STORAGE_VERSION = 1
 
 class ZeekrRequestStats:
     def __init__(self, hass: HomeAssistant):
-        self._store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+        self._store: Store = Store(hass, STORAGE_VERSION, STORAGE_KEY)
         self.api_requests_today = 0
         self.api_invokes_today = 0
         self.api_requests_total = 0

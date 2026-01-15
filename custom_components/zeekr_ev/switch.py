@@ -30,7 +30,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class ZeekrSwitch(CoordinatorEntity, SwitchEntity):
+class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
     """Zeekr Switch class."""
 
     _attr_icon = "mdi:toggle-switch"

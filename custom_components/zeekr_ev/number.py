@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.components.number import RestoreNumber
+from homeassistant.components.number import NumberEntity, RestoreNumber
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
@@ -23,7 +23,7 @@ async def async_setup_entry(
     coordinator: ZeekrCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     # We create global configuration numbers, not per vehicle
-    entities = [
+    entities: list[NumberEntity] = [
         ZeekrConfigNumber(
             coordinator,
             entry.entry_id,
