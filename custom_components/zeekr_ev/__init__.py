@@ -28,6 +28,7 @@ from .const import (
     STARTUP_MESSAGE,
 )
 from .coordinator import ZeekrCoordinator
+from .request_stats import ZeekrRequestStats
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -111,6 +112,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
             logger=_LOGGER,
         )
         try:
+            # Count the login request
+            stats = ZeekrRequestStats(hass)
+            await stats.async_load()
+            await stats.async_inc_request()
             await hass.async_add_executor_job(client.login)
         except Exception as ex:
             _LOGGER.error("Could not log in to Zeekr API: %s", ex)

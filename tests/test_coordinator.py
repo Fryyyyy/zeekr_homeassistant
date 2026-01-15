@@ -67,6 +67,9 @@ async def test_async_update_data_fetches_list_and_status(hass, mock_config_entry
         assert "VIN1" in data
         assert data["VIN1"] == {"k": "v"}
 
+        # 1 call for vehicle list (since vehicles was empty), 1 call for status
+        assert coordinator.request_stats.async_inc_request.call_count == 2
+
 
 @pytest.mark.asyncio
 async def test_async_update_data_fetches_charging_status_when_charging(hass, mock_config_entry, monkeypatch):
@@ -102,6 +105,9 @@ async def test_async_update_data_fetches_charging_status_when_charging(hass, moc
         assert "chargingStatus" in data["VIN1"]
         assert data["VIN1"]["chargingStatus"]["chargeVoltage"] == "222.0"
 
+        # 1 call for vehicle list, 1 call for status, 1 call for charging status
+        assert coordinator.request_stats.async_inc_request.call_count == 3
+
 
 @pytest.mark.asyncio
 async def test_async_update_data_skips_charging_status_when_not_charging(hass, mock_config_entry, monkeypatch):
@@ -128,3 +134,6 @@ async def test_async_update_data_skips_charging_status_when_not_charging(hass, m
         assert "VIN1" in data
         # chargingStatus should not be set if vehicle is not charging
         assert data["VIN1"].get("chargingStatus") is None or data["VIN1"]["chargingStatus"] == {}
+
+        # 1 call for vehicle list, 1 call for status
+        assert coordinator.request_stats.async_inc_request.call_count == 2

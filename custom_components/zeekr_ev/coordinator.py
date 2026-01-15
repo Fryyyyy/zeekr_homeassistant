@@ -78,9 +78,9 @@ class ZeekrCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict[str, dict]:
         """Fetch data from API endpoint."""
         try:
-            await self.request_stats.async_inc_request()
             # Refresh vehicle list if empty (first run)
             if not self.vehicles:
+                await self.request_stats.async_inc_request()
                 self.vehicles = await self.hass.async_add_executor_job(
                     self.client.get_vehicle_list
                 )
@@ -88,6 +88,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
             data = {}
             for vehicle in self.vehicles:
                 # get_status returns a dict, no need to wrap if it was a property, but it's a method calling network
+                await self.request_stats.async_inc_request()
                 vehicle_data = await self.hass.async_add_executor_job(
                     vehicle.get_status
                 )
@@ -96,6 +97,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 # Fetch charging status if vehicle is currently charging
                 if vehicle_data.get("additionalVehicleStatus", {}).get("electricVehicleStatus", {}).get("chargerState"):
                     try:
+                        await self.request_stats.async_inc_request()
                         charging_status = await self.hass.async_add_executor_job(
                             vehicle.get_charging_status
                         )
