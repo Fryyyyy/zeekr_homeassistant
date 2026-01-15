@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, call
 import pytest
 from custom_components.zeekr_ev.switch import ZeekrSwitch, async_setup_entry
 from custom_components.zeekr_ev.const import DOMAIN
@@ -112,5 +112,70 @@ async def test_switch_async_setup_entry(hass, mock_config_entry):
     await async_setup_entry(hass, mock_config_entry, async_add_entities)
 
     assert async_add_entities.called
-    assert len(async_add_entities.call_args[0][0]) == 1
-    assert isinstance(async_add_entities.call_args[0][0][0], ZeekrSwitch)
+    assert len(async_add_entities.call_args[0][0]) == 2
+    # Ensure both switches are added
+    types = [type(e) for e in async_add_entities.call_args[0][0]]
+    assert ZeekrSwitch in types
+
+
+@pytest.mark.asyncio
+async def test_charging_switch():
+    vin = "VIN1"
+    initial_data = {
+        vin: {
+            "additionalVehicleStatus": {
+                "electricVehicleStatus": {
+                    "chargerState": "0"
+                }
+            }
+        }
+    }
+
+    coordinator = MockCoordinator(initial_data)
+    vehicle_mock = MagicMock()
+    coordinator.vehicles[vin] = vehicle_mock
+
+    switch = ZeekrSwitch(coordinator, vin, "charging", "Charging")
+    switch.hass = DummyHass()
+    switch.async_write_ha_state = MagicMock()
+
+    # Test is_on logic
+    # "0" -> False
+    assert switch.is_on is False
+
+    # "1" -> True
+    coordinator.data[vin]["additionalVehicleStatus"]["electricVehicleStatus"]["chargerState"] = "1"
+    assert switch.is_on is True
+
+    # "26" -> False (Connected but finished)
+    coordinator.data[vin]["additionalVehicleStatus"]["electricVehicleStatus"]["chargerState"] = "26"
+    assert switch.is_on is False
+
+    # Test Turn On (should do nothing)
+    coordinator.data[vin]["additionalVehicleStatus"]["electricVehicleStatus"]["chargerState"] = "0"
+    await switch.async_turn_on()
+    # Logic says it returns early, so nothing should be called on vehicle
+    vehicle_mock.do_remote_control.assert_not_called()
+    assert coordinator.data[vin]["additionalVehicleStatus"]["electricVehicleStatus"]["chargerState"] == "0"
+
+    # Test Turn Off (Stop Charging)
+    # We are "charging" so state is "1"
+    coordinator.data[vin]["additionalVehicleStatus"]["electricVehicleStatus"]["chargerState"] = "1"
+
+    await switch.async_turn_off()
+
+    vehicle_mock.do_remote_control.assert_called_with(
+        "stop",
+        "RCS",
+        {
+            "serviceParameters": [
+                {
+                    "key": "rcs.terminate",
+                    "value": "1"
+                }
+            ]
+        }
+    )
+    # Optimistic update
+    assert coordinator.data[vin]["additionalVehicleStatus"]["electricVehicleStatus"]["chargerState"] == "0"
+    switch.async_write_ha_state.assert_called()

@@ -27,8 +27,44 @@ async def async_setup_entry(
     entities = []
     for vehicle in coordinator.vehicles:
         entities.append(ZeekrForceUpdateButton(coordinator, vehicle.vin))
+        entities.append(ZeekrFlashBlinkersButton(coordinator, vehicle.vin))
 
     async_add_entities(entities)
+
+
+class ZeekrFlashBlinkersButton(ZeekrEntity, ButtonEntity):
+    """Button to Flash Blinkers."""
+
+    _attr_icon = "mdi:car-light-alert"
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        """Initialize the button."""
+        super().__init__(coordinator, vin)
+        self._attr_name = "Flash Blinkers"
+        self._attr_unique_id = f"{vin}_flash_blinkers"
+
+    async def async_press(self) -> None:
+        """Handle the button press."""
+        vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
+        if not vehicle:
+            return
+
+        command = "start"
+        service_id = "RHL"
+        setting = {
+            "serviceParameters": [
+                {
+                    "key": "rhl",
+                    "value": "light-flash"
+                }
+            ]
+        }
+
+        await self.coordinator.async_inc_invoke()
+        await self.hass.async_add_executor_job(
+            vehicle.do_remote_control, command, service_id, setting
+        )
+        _LOGGER.info("Flash blinkers requested for vehicle %s", self.vin)
 
 
 class ZeekrForceUpdateButton(ZeekrEntity, ButtonEntity):

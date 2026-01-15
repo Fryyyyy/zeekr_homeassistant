@@ -25,12 +25,15 @@ async def async_setup_entry(
 
     for vin in coordinator.data:
         entities.append(ZeekrSwitch(coordinator, vin, "defrost", "Defroster"))
+        entities.append(ZeekrSwitch(coordinator, vin, "charging", "Charging"))
 
     async_add_entities(entities)
 
 
 class ZeekrSwitch(CoordinatorEntity, SwitchEntity):
     """Zeekr Switch class."""
+
+    _attr_icon = "mdi:toggle-switch"
 
     def __init__(
         self,
@@ -45,26 +48,45 @@ class ZeekrSwitch(CoordinatorEntity, SwitchEntity):
         self.field = field
         self._attr_name = f"Zeekr {vin[-4:] if vin else ''} {label}"
         self._attr_unique_id = f"{vin}_{field}"
+        if field == "charging":
+            self._attr_icon = "mdi:battery-off"
 
     @property
     def is_on(self) -> bool | None:
         """Return true if the switch is on."""
         try:
-            val = (
-                self.coordinator.data.get(self.vin, {})
-                .get("additionalVehicleStatus", {})
-                .get("climateStatus", {})
-                .get(self.field)
-            )
-            if val is None:
-                return None
-            # User: "1" (on), "0" (off)
-            return str(val) == "1"
+            val = None
+            if self.field == "charging":
+                val = (
+                    self.coordinator.data.get(self.vin, {})
+                    .get("additionalVehicleStatus", {})
+                    .get("electricVehicleStatus", {})
+                    .get("chargerState")
+                )
+                if val is None:
+                    return None
+                # "1" is charging, "26" is connected but finished.
+                return str(val) == "1"
+            else:
+                val = (
+                    self.coordinator.data.get(self.vin, {})
+                    .get("additionalVehicleStatus", {})
+                    .get("climateStatus", {})
+                    .get(self.field)
+                )
+                if val is None:
+                    return None
+                # User: "1" (on), "0" (off)
+                return str(val) == "1"
         except (ValueError, TypeError, AttributeError):
             return None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
+        if self.field == "charging":
+            # Charging cannot be started remotely via this API
+            return
+
         vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
         if not vehicle:
             return
@@ -115,6 +137,17 @@ class ZeekrSwitch(CoordinatorEntity, SwitchEntity):
                     }
                 ]
             }
+        elif self.field == "charging":
+            command = "stop"
+            service_id = "RCS"
+            setting = {
+                "serviceParameters": [
+                    {
+                        "key": "rcs.terminate",
+                        "value": "1"
+                    }
+                ]
+            }
 
         if setting:
             await self.coordinator.async_inc_invoke()
@@ -131,13 +164,24 @@ class ZeekrSwitch(CoordinatorEntity, SwitchEntity):
         if not data:
             return
 
-        climate_status = (
-            data.setdefault("additionalVehicleStatus", {})
-            .setdefault("climateStatus", {})
-        )
+        if self.field == "charging":
+            ev_status = (
+                data.setdefault("additionalVehicleStatus", {})
+                .setdefault("electricVehicleStatus", {})
+            )
+            # If turning off, set to "0" (or just not "1").
+            # If turning on (not supported), we wouldn't be here or it's optimistic.
+            if not is_on:
+                # Assuming "0" or "2" is stopped. Just setting to "0" to clear "1".
+                ev_status["chargerState"] = "0"
+        else:
+            climate_status = (
+                data.setdefault("additionalVehicleStatus", {})
+                .setdefault("climateStatus", {})
+            )
 
-        if self.field == "defrost":
-            climate_status[self.field] = "1" if is_on else "0"
+            if self.field == "defrost":
+                climate_status[self.field] = "1" if is_on else "0"
 
     @property
     def device_info(self):
