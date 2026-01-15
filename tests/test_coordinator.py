@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 import asyncio
 from custom_components.zeekr_ev.coordinator import ZeekrCoordinator
@@ -31,6 +31,15 @@ class DummyHass:
         self.data = {DOMAIN: {}}
         self.loop = asyncio.get_event_loop()
 
+def mock_data_update_coordinator_init(self, hass, logger, name, update_interval=None, update_method=None, request_refresh_debouncer=None):
+    """Mock DataUpdateCoordinator.__init__ to set basic attributes."""
+    self.hass = hass
+    self.logger = logger
+    self.name = name
+    self.update_interval = update_interval
+    self._listeners = []
+    self._micro_controller = MagicMock()
+
 @pytest.mark.asyncio
 async def test_coordinator_update_charging_limit():
     vin = "VIN1"
@@ -48,7 +57,9 @@ async def test_coordinator_update_charging_limit():
 
     client = MockClient([vehicle])
     hass = DummyHass()
-    coordinator = ZeekrCoordinator(hass, client, DummyConfig())
+
+    with patch("homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__", side_effect=mock_data_update_coordinator_init, autospec=True):
+        coordinator = ZeekrCoordinator(hass, client, DummyConfig())
 
     # Mock stats
     coordinator.request_stats = MagicMock()
@@ -79,7 +90,9 @@ async def test_coordinator_update_charging_limit_failure():
 
     client = MockClient([vehicle])
     hass = DummyHass()
-    coordinator = ZeekrCoordinator(hass, client, DummyConfig())
+
+    with patch("homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__", side_effect=mock_data_update_coordinator_init, autospec=True):
+        coordinator = ZeekrCoordinator(hass, client, DummyConfig())
 
     # Mock stats
     coordinator.request_stats = MagicMock()
