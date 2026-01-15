@@ -99,3 +99,80 @@ def test_charger_state_sensor():
         lambda d: d.get("chargingStatus", {}).get("chargerState"),
     )
     assert s.native_value == "2"
+
+
+def test_tire_temp_sensors():
+    data = {
+        "VIN1": {
+            "additionalVehicleStatus": {
+                "maintenanceStatus": {
+                    "tyreTempDriver": 20,
+                    "tyreTempPassenger": 21,
+                    "tyreTempDriverRear": 22,
+                    "tyreTempPassengerRear": 23,
+                }
+            }
+        }
+    }
+    coordinator = DummyCoordinator(data)
+
+    for tire, val in [("Driver", 20), ("Passenger", 21), ("DriverRear", 22), ("PassengerRear", 23)]:
+        s = ZeekrSensor(
+            coordinator,
+            "VIN1",
+            f"tire_temperature_{tire.lower()}",
+            f"Tire Temperature {tire}",
+            lambda d, t=tire: d.get("additionalVehicleStatus", {})
+            .get("maintenanceStatus", {})
+            .get(f"tyreTemp{t}"),
+            "°C",
+        )
+        assert s.native_value == val
+
+
+def test_window_sensors():
+    data = {
+        "VIN1": {
+            "additionalVehicleStatus": {
+                "climateStatus": {
+                    "winStatusDriver": "2",
+                    "winStatusPassenger": "2",
+                    "winStatusDriverRear": "2",
+                    "winStatusPassengerRear": "2",
+                    "winPosDriver": "0",
+                    "winPosPassenger": "0",
+                    "winPosDriverRear": "0",
+                    "winPosPassengerRear": "0",
+                }
+            }
+        }
+    }
+    coordinator = DummyCoordinator(data)
+
+    # Status
+    for win, status in [("Driver", "2"), ("Passenger", "2"), ("DriverRear", "2"), ("PassengerRear", "2")]:
+        s = ZeekrSensor(
+            coordinator,
+            "VIN1",
+            f"window_status_{win.lower()}",
+            f"Window Status {win}",
+            lambda d, w=win: d.get("additionalVehicleStatus", {})
+            .get("climateStatus", {})
+            .get(f"winStatus{w}"),
+            None,
+        )
+        assert s.native_value == status
+
+    # Position
+    for win, pos in [("Driver", "0"), ("Passenger", "0"), ("DriverRear", "0"), ("PassengerRear", "0")]:
+        s = ZeekrSensor(
+            coordinator,
+            "VIN1",
+            f"window_position_{win.lower()}",
+            f"Window Position {win}",
+            lambda d, w=win: d.get("additionalVehicleStatus", {})
+            .get("climateStatus", {})
+            .get(f"winPos{w}"),
+            "%",
+        )
+        assert s.native_value == pos

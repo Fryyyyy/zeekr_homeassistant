@@ -132,6 +132,49 @@ async def async_setup_entry(
                 )
             )
 
+        # Tire Pre-Warning & Temp Warning
+        for tire in ["Driver", "Passenger", "DriverRear", "PassengerRear"]:
+            # Pre-Warning
+            entities.append(
+                ZeekrBinarySensor(
+                    coordinator,
+                    vin,
+                    f"tire_pre_warning_{tire.lower()}",
+                    f"Tire Pre-Warning {tire}",
+                    lambda d, t=tire: (
+                        None
+                        if (
+                            v := d.get("additionalVehicleStatus", {})
+                            .get("maintenanceStatus", {})
+                            .get(f"tyrePreWarning{t}")
+                        )
+                        is None
+                        else str(v) != "0"
+                    ),
+                    BinarySensorDeviceClass.PROBLEM,
+                )
+            )
+            # Temp Warning
+            entities.append(
+                ZeekrBinarySensor(
+                    coordinator,
+                    vin,
+                    f"tire_temp_warning_{tire.lower()}",
+                    f"Tire Temp Warning {tire}",
+                    lambda d, t=tire: (
+                        None
+                        if (
+                            v := d.get("additionalVehicleStatus", {})
+                            .get("maintenanceStatus", {})
+                            .get(f"tyreTempWarning{t}")
+                        )
+                        is None
+                        else str(v) != "0"
+                    ),
+                    BinarySensorDeviceClass.PROBLEM,
+                )
+            )
+
         # Seatbelt and other alert/status sensors from drivingSafetyStatus
         alert_fields = {
             "seatbelt_driver": (
