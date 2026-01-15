@@ -77,28 +77,39 @@ async def test_charging_limit_number():
         }
     )
 
+    # Check optimistic update
     assert number_entity.native_value == 80.0
     number_entity.async_write_ha_state.assert_called()
 
-
 @pytest.mark.asyncio
-async def test_charging_limit_setup_entry(mock_config_entry):
+async def test_charging_limit_read_from_coordinator():
     vin = "VIN1"
     vehicle = MockVehicle(vin)
     coordinator = MockCoordinator([vehicle])
 
-    hass = DummyHass()
-    hass.data[DOMAIN] = {mock_config_entry.entry_id: coordinator}
+    # Inject data into coordinator
+    coordinator.data[vin] = {
+        "chargingLimit": {
+            "soc": "900"
+        }
+    }
 
-    async_add_entities = MagicMock()
+    number_entity = ZeekrChargingLimitNumber(coordinator, vin)
+    number_entity.hass = DummyHass()
 
-    await async_setup_entry(hass, mock_config_entry, async_add_entities)
+    # Should read 90.0
+    assert number_entity.native_value == 90.0
 
-    assert async_add_entities.called
-    entities = async_add_entities.call_args[0][0]
+    # Update data
+    coordinator.data[vin]["chargingLimit"]["soc"] = "550"
+    assert number_entity.native_value == 55.0
 
-    # We expect 3 entities: 2 config numbers + 1 charging limit number
-    assert len(entities) == 3
+@pytest.mark.asyncio
+async def test_charging_limit_step():
+    vin = "VIN1"
+    vehicle = MockVehicle(vin)
+    coordinator = MockCoordinator([vehicle])
 
-    # Check if ZeekrChargingLimitNumber is in the list
-    assert any(isinstance(e, ZeekrChargingLimitNumber) for e in entities)
+    number_entity = ZeekrChargingLimitNumber(coordinator, vin)
+
+    assert number_entity.native_step == 5

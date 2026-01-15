@@ -105,6 +105,18 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                             vehicle_data.setdefault("chargingStatus", {}).update(charging_status)
                     except Exception as charge_err:
                         _LOGGER.debug("Error fetching charging status for %s: %s", vehicle.vin, charge_err)
+
+                # Fetch charging limit
+                try:
+                    await self.request_stats.async_inc_request()
+                    charging_limit = await self.hass.async_add_executor_job(
+                        vehicle.get_charging_limit
+                    )
+                    if charging_limit:
+                        vehicle_data["chargingLimit"] = charging_limit
+                except Exception as limit_err:
+                    _LOGGER.debug("Error fetching charging limit for %s: %s", vehicle.vin, limit_err)
+
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:

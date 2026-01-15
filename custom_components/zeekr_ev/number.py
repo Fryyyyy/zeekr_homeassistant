@@ -94,7 +94,7 @@ class ZeekrChargingLimitNumber(ZeekrEntity, RestoreNumber):
     _attr_has_entity_name = True
     _attr_native_min_value = 50
     _attr_native_max_value = 100
-    _attr_native_step = 1
+    _attr_native_step = 5
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_icon = "mdi:battery-charging-high"
 
@@ -104,6 +104,22 @@ class ZeekrChargingLimitNumber(ZeekrEntity, RestoreNumber):
         self._attr_name = "Charging Limit"
         self._attr_unique_id = f"{vin}_charging_limit"
         self._attr_native_value = None
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the value reported by the coordinator."""
+        try:
+            val = (
+                self.coordinator.data.get(self.vin, {})
+                .get("chargingLimit", {})
+                .get("soc")
+            )
+            if val is not None:
+                # API returns value * 10 (e.g. 800 -> 80.0)
+                return float(val) / 10.0
+        except (ValueError, TypeError, AttributeError):
+            pass
+        return self._attr_native_value
 
     async def async_added_to_hass(self) -> None:
         """Handle entity which will be added."""
