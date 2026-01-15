@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, AsyncMock, call
+from unittest.mock import MagicMock, AsyncMock
 import pytest
 from custom_components.zeekr_ev.switch import ZeekrSwitch, async_setup_entry
 from custom_components.zeekr_ev.const import DOMAIN

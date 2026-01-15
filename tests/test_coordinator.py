@@ -4,6 +4,7 @@ import asyncio
 from custom_components.zeekr_ev.coordinator import ZeekrCoordinator
 from custom_components.zeekr_ev.const import DOMAIN
 
+
 class MockVehicle:
     def __init__(self, vin):
         self.vin = vin
@@ -11,9 +12,11 @@ class MockVehicle:
         self.get_charging_status = MagicMock()
         self.get_charging_limit = MagicMock()
 
+
 class MockClient:
     def __init__(self, vehicles):
         self.get_vehicle_list = MagicMock(return_value=vehicles)
+
 
 class DummyConfig:
     def __init__(self):
@@ -24,12 +27,14 @@ class DummyConfig:
     def path(self, *args):
         return "/tmp/dummy_path"
 
+
 class DummyHass:
     def __init__(self):
         self.config = DummyConfig()
         self.async_add_executor_job = AsyncMock(side_effect=lambda f, *args: f(*args))
         self.data = {DOMAIN: {}}
         self.loop = asyncio.get_event_loop()
+
 
 def mock_data_update_coordinator_init(self, hass, logger, name, update_interval=None, update_method=None, request_refresh_debouncer=None):
     """Mock DataUpdateCoordinator.__init__ to set basic attributes."""
@@ -39,6 +44,7 @@ def mock_data_update_coordinator_init(self, hass, logger, name, update_interval=
     self.update_interval = update_interval
     self._listeners = []
     self._micro_controller = MagicMock()
+
 
 @pytest.mark.asyncio
 async def test_coordinator_update_charging_limit():
@@ -80,6 +86,7 @@ async def test_coordinator_update_charging_limit():
     finally:
         if coordinator._unsub_reset:
             coordinator._unsub_reset()
+
 
 @pytest.mark.asyncio
 async def test_coordinator_update_charging_limit_failure():

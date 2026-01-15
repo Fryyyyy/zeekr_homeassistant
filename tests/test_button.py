@@ -2,7 +2,6 @@ from unittest.mock import MagicMock, AsyncMock
 import pytest
 from custom_components.zeekr_ev.button import ZeekrFlashBlinkersButton, async_setup_entry
 from custom_components.zeekr_ev.const import DOMAIN
-from custom_components.zeekr_ev.entity import ZeekrEntity
 
 
 class MockVehicle:
@@ -66,6 +65,7 @@ async def test_flash_blinkers_button():
             ]
         }
     )
+
 
 @pytest.mark.asyncio
 async def test_button_async_setup_entry(mock_config_entry):

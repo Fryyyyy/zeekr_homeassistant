@@ -1,8 +1,7 @@
-from unittest.mock import MagicMock, AsyncMock, call
+from unittest.mock import MagicMock, AsyncMock
 import pytest
 from custom_components.zeekr_ev.number import ZeekrChargingLimitNumber, async_setup_entry
 from custom_components.zeekr_ev.const import DOMAIN
-from homeassistant.components.number import RestoreNumber
 
 
 class MockVehicle:
@@ -81,6 +80,7 @@ async def test_charging_limit_number():
     assert number_entity.native_value == 80.0
     number_entity.async_write_ha_state.assert_called()
 
+
 @pytest.mark.asyncio
 async def test_charging_limit_read_from_coordinator():
     vin = "VIN1"
@@ -103,6 +103,7 @@ async def test_charging_limit_read_from_coordinator():
     # Update data
     coordinator.data[vin]["chargingLimit"]["soc"] = "550"
     assert number_entity.native_value == 55.0
+
 
 @pytest.mark.asyncio
 async def test_charging_limit_step():
