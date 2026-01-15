@@ -214,7 +214,7 @@ async def async_setup_entry(
                     "charge_speed",
                     "Charge Speed",
                     lambda d: d.get("chargingStatus", {}).get("chargeSpeed"),
-                    None,
+                    "km/h",
                     None,
                 )
             )
