@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock, AsyncMock
 import pytest
-from custom_components.zeekr_ev.number import ZeekrChargingLimitNumber, ZeekrConfigNumber, async_setup_entry
-from custom_components.zeekr_ev.const import DOMAIN
+from custom_components.zeekr_ev.number import ZeekrChargingLimitNumber, ZeekrConfigNumber
 
 
 class MockVehicle:
@@ -17,7 +16,6 @@ class MockCoordinator:
         self.async_inc_invoke = AsyncMock()
         self.async_request_refresh = AsyncMock()
         self.seat_duration = 15
-
 
     def get_vehicle_by_vin(self, vin):
         for v in self.vehicles:

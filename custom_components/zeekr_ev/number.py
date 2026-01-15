@@ -103,7 +103,7 @@ class ZeekrChargingLimitNumber(ZeekrEntity, RestoreNumber):
         super().__init__(coordinator, vin)
         self._attr_name = "Charging Limit"
         self._attr_unique_id = f"{vin}_charging_limit"
-        self._attr_native_value = None
+        self._attr_native_value: float | None = None
 
     @property
     def native_value(self) -> float | None:
