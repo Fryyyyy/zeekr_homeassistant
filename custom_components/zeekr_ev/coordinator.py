@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -41,7 +41,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         self.seat_duration = 15
         self.ac_duration = 15
         self.request_stats = ZeekrRequestStats(hass)
-        self.latest_poll_time = None  # Track latest poll time
+        self.latest_poll_time: Optional[str] = None  # Track latest poll time
         polling_interval = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL)
         super().__init__(
             hass,

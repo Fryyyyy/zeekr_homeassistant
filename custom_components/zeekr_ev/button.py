@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+
+from datetime import datetime
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -85,7 +87,6 @@ class ZeekrForceUpdateButton(ZeekrEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         """Handle the button press."""
-        from datetime import datetime
         _LOGGER.info("Poll vehicle data requested for vehicle %s", self.vin)
         self.coordinator.latest_poll_time = datetime.now().isoformat()
         await self.coordinator.async_request_refresh()
