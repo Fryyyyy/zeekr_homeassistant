@@ -190,6 +190,7 @@ async def test_windows_mixed_state(hass):
     # Avg pos: (100 + 0 + 0 + 0) / 4 = 25
     assert windows.current_cover_position == 25
 
+
 @pytest.mark.asyncio
 async def test_zeekr_window_readonly(hass):
     vin = "VIN1"
