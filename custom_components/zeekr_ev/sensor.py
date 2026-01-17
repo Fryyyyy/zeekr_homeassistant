@@ -137,37 +137,6 @@ async def async_setup_entry(
                 )
             )
 
-        # Window Status & Position
-        for win in ["Driver", "Passenger", "DriverRear", "PassengerRear"]:
-            # Status
-            entities.append(
-                ZeekrSensor(
-                    coordinator,
-                    vin,
-                    f"window_status_{win.lower()}",
-                    f"Window Status {win}",
-                    lambda d, w=win: d.get("additionalVehicleStatus", {})
-                    .get("climateStatus", {})
-                    .get(f"winStatus{w}"),
-                    None,
-                    None,
-                )
-            )
-            # Position
-            entities.append(
-                ZeekrSensor(
-                    coordinator,
-                    vin,
-                    f"window_position_{win.lower()}",
-                    f"Window Position {win}",
-                    lambda d, w=win: d.get("additionalVehicleStatus", {})
-                    .get("climateStatus", {})
-                    .get(f"winPos{w}"),
-                    PERCENTAGE,
-                    None,
-                )
-            )
-
         # Charging Status Sensors (only when charging)
         if data.get("chargingStatus"):
             # Charge Voltage

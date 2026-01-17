@@ -17,6 +17,7 @@ class MockCoordinator:
         self.data = data
         self.vehicles = {}
         self.async_inc_invoke = AsyncMock()
+        self.steering_wheel_duration = 15
 
     def get_vehicle_by_vin(self, vin):
         return self.vehicles.get(vin)
@@ -112,8 +113,8 @@ async def test_switch_async_setup_entry(hass, mock_config_entry):
     await async_setup_entry(hass, mock_config_entry, async_add_entities)
 
     assert async_add_entities.called
-    assert len(async_add_entities.call_args[0][0]) == 2
-    # Ensure both switches are added
+    assert len(async_add_entities.call_args[0][0]) == 3
+    # Ensure all switches are added
     types = [type(e) for e in async_add_entities.call_args[0][0]]
     assert ZeekrSwitch in types
 
@@ -178,4 +179,87 @@ async def test_charging_switch():
     )
     # Optimistic update
     assert coordinator.data[vin]["additionalVehicleStatus"]["electricVehicleStatus"]["chargerState"] == "0"
+    switch.async_write_ha_state.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_steering_wheel_switch():
+    vin = "VIN1"
+    initial_data = {
+        vin: {
+            "additionalVehicleStatus": {
+                "climateStatus": {
+                    "steerWhlHeatingSts": "2"  # Off
+                }
+            }
+        }
+    }
+
+    coordinator = MockCoordinator(initial_data)
+    vehicle_mock = MagicMock()
+    coordinator.vehicles[vin] = vehicle_mock
+
+    switch = ZeekrSwitch(
+        coordinator,
+        vin,
+        "steering_wheel_heat",
+        "Steering Wheel Heat",
+        status_key="steerWhlHeatingSts"
+    )
+    switch.hass = DummyHass()
+    switch.async_write_ha_state = MagicMock()
+
+    # Test is_on logic
+    assert switch.is_on is False
+
+    coordinator.data[vin]["additionalVehicleStatus"]["climateStatus"]["steerWhlHeatingSts"] = "1"
+    assert switch.is_on is True
+
+    # Reset
+    coordinator.data[vin]["additionalVehicleStatus"]["climateStatus"]["steerWhlHeatingSts"] = "2"
+
+    # Test Turn On
+    await switch.async_turn_on()
+
+    vehicle_mock.do_remote_control.assert_called_with(
+        "start",
+        "ZAF",
+        {
+            "serviceParameters": [
+                {
+                    "key": "SW",
+                    "value": "true"
+                },
+                {
+                    "key": "SW.duration",
+                    "value": "15"
+                },
+                {
+                    "key": "SW.level",
+                    "value": "3"
+                }
+            ]
+        }
+    )
+    # Optimistic update
+    assert coordinator.data[vin]["additionalVehicleStatus"]["climateStatus"]["steerWhlHeatingSts"] == "1"
+    switch.async_write_ha_state.assert_called()
+
+    # Test Turn Off
+    await switch.async_turn_off()
+
+    vehicle_mock.do_remote_control.assert_called_with(
+        "start",
+        "ZAF",
+        {
+            "serviceParameters": [
+                {
+                    "key": "SW",
+                    "value": "false"
+                }
+            ]
+        }
+    )
+    # Optimistic update
+    assert coordinator.data[vin]["additionalVehicleStatus"]["climateStatus"]["steerWhlHeatingSts"] == "2"
     switch.async_write_ha_state.assert_called()
