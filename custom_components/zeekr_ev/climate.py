@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from homeassistant.components.climate import (
@@ -136,7 +137,11 @@ class ZeekrClimate(CoordinatorEntity, ClimateEntity):
             self._update_local_state_optimistically(hvac_mode)
             self.async_write_ha_state()
 
-            await self.coordinator.async_request_refresh()
+            # delayed refresh
+            async def delayed_refresh():
+                await asyncio.sleep(10)
+                await self.coordinator.async_request_refresh()
+            self.hass.async_create_task(delayed_refresh())
 
     def _update_local_state_optimistically(self, hvac_mode: HVACMode) -> None:
         """Update the coordinator data to reflect the change immediately."""
