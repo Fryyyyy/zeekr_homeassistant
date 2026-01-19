@@ -1,8 +1,9 @@
-
+import asyncio
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, timedelta
-from custom_components.zeekr_ev.request_stats import ZeekrRequestStats
+
+from custom_components.zeekr_ev.request_stats import ZeekrRequestStats, SAVE_DELAY
 
 
 @pytest.fixture
@@ -71,10 +72,21 @@ async def test_inc_request(hass, mock_store):
     stats = ZeekrRequestStats(hass)
     await stats.async_load()
 
-    await stats.async_inc_request()
-    assert stats.api_requests_today == 1
-    assert stats.api_requests_total == 1
-    assert mock_store.async_save.called
+    try:
+        await stats.async_inc_request()
+        assert stats.api_requests_today == 1
+        assert stats.api_requests_total == 1
+        # Assert that save is NOT called immediately
+        mock_store.async_save.assert_not_called()
+
+        # Wait for the save delay
+        await asyncio.sleep(SAVE_DELAY + 1)
+
+        # Assert that save IS called after the delay
+        mock_store.async_save.assert_called_once()
+    finally:
+        # Clean up any lingering timers
+        await stats.async_shutdown()
 
 
 @pytest.mark.asyncio
@@ -85,7 +97,18 @@ async def test_inc_invoke(hass, mock_store):
     stats = ZeekrRequestStats(hass)
     await stats.async_load()
 
-    await stats.async_inc_invoke()
-    assert stats.api_invokes_today == 1
-    assert stats.api_invokes_total == 1
-    assert mock_store.async_save.called
+    try:
+        await stats.async_inc_invoke()
+        assert stats.api_invokes_today == 1
+        assert stats.api_invokes_total == 1
+        # Assert that save is NOT called immediately
+        mock_store.async_save.assert_not_called()
+
+        # Wait for the save delay
+        await asyncio.sleep(SAVE_DELAY + 1)
+
+        # Assert that save IS called after the delay
+        mock_store.async_save.assert_called_once()
+    finally:
+        # Clean up any lingering timers
+        await stats.async_shutdown()
