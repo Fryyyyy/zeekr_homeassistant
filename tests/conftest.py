@@ -23,6 +23,7 @@ class DummyHass:
         self.data = {}
         self.config_entries = DummyConfigEntries()
         self.config = DummyConfig()
+        self.loop = asyncio.get_event_loop()
 
     async def async_add_executor_job(self, func, *args, **kwargs):
         # Run synchronous callable in test loop
