@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import logging
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -20,11 +21,14 @@ from homeassistant.const import (
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import ZeekrCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 # Import the encryption function dynamically (try pip first, then local)
 zeekr_app_sig_module = None
@@ -36,7 +40,7 @@ except ImportError:
             "custom_components.zeekr_ev_api.zeekr_app_sig"
         )
     except ImportError:
-        pass
+        _LOGGER.error("Could not import zeekr_app_sig. X-VIN generation will be unavailable.")
 
 
 async def async_setup_entry(
@@ -45,6 +49,9 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up the sensor platform."""
+    if zeekr_app_sig_module is None:
+        raise ConfigEntryNotReady("Missing required dependency: zeekr_app_sig")
+
     coordinator: ZeekrCoordinator = hass.data[DOMAIN][entry.entry_id]
 
     entities = []
@@ -343,8 +350,8 @@ class ZeekrAPIStatusSensor(CoordinatorEntity, SensorEntity):
                         )
                         x_vins[vin] = encrypted_vin
                     attrs["x_vins"] = x_vins
-                except Exception:
-                    pass  # Silently fail if encryption fails
+                except Exception as e:
+                    _LOGGER.error("Failed to generate X-VIN: %s", e)
         return attrs
 
 
