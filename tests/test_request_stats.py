@@ -1,9 +1,8 @@
-import asyncio
 import pytest
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime, timedelta
 
-from custom_components.zeekr_ev.request_stats import ZeekrRequestStats, SAVE_DELAY
+from custom_components.zeekr_ev.request_stats import ZeekrRequestStats
 
 
 @pytest.fixture
