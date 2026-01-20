@@ -78,30 +78,6 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 return vehicle
         return None
 
-    def _safe_get_vehicle_state(self, vin: str | None = None) -> dict | None:
-        """Fetch remote control vehicle state (sync)."""
-        client = self.client
-        method_names = [
-            "get_vehicle_state",
-            "get_remote_control_state",
-            "get_vehicle_state_status",
-        ]
-
-        for name in method_names:
-            method = getattr(client, name, None)
-            if method is None:
-                continue
-            try:
-                result = method(vin) if vin is not None else method()
-                if isinstance(result, dict) and "data" in result:
-                    return result.get("data")
-                if isinstance(result, dict):
-                    return result
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Error calling %s: %s", name, err)
-
-        return None
-
     async def _async_update_data(self) -> dict[str, dict]:
         """Fetch data from API endpoint."""
         try:
@@ -116,7 +92,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
             for vehicle in self.vehicles:
                 await self.request_stats.async_inc_request()
                 vehicle_state = await self.hass.async_add_executor_job(
-                    self._safe_get_vehicle_state, vehicle.vin
+                    vehicle.get_remote_control_state
                 )
                 # get_status returns a dict, no need to wrap if it was a property, but it's a method calling network
                 await self.request_stats.async_inc_request()
