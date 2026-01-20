@@ -44,6 +44,9 @@ class DummyHass:
     async def async_add_executor_job(self, func, *args, **kwargs):
         return func(*args, **kwargs)
 
+    def async_create_task(self, coro):
+        return None
+
 
 @pytest.mark.asyncio
 async def test_switch_optimistic_update():
