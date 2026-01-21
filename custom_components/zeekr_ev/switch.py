@@ -113,7 +113,6 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
         except (ValueError, TypeError, AttributeError):
             return None
 
-
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
         if self.field == "charging":
