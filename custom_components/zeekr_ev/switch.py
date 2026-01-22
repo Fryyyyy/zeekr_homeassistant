@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from homeassistant.components.sensor import SensorEntity
 
+import asyncio
 from typing import Any
 
 import asyncio
@@ -38,6 +39,17 @@ async def async_setup_entry(
         )
         # Add chargerState diagnostic sensor
         entities.append(ZeekrChargerStateSensor(coordinator, vin))
+        # Add sentry mode switch
+        entities.append(
+            ZeekrSwitch(
+                coordinator,
+                vin,
+                "sentry_mode",
+                "Sentry Mode",
+                status_key="vstdModeState",
+                status_group="remoteControlState",
+            )
+        )
 
     async_add_entities(entities)
 
@@ -87,18 +99,22 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
         field: str,
         label: str,
         status_key: str | None = None,
+        status_group: str = "climateStatus",
     ) -> None:
         """Initialize the switch entity."""
         super().__init__(coordinator)
         self.vin = vin
         self.field = field
         self.status_key = status_key or field
+        self.status_group = status_group
         self._attr_name = f"Zeekr {vin[-4:] if vin else ''} {label}"
         self._attr_unique_id = f"{vin}_{field}"
         if field == "charging":
             self._attr_icon = "mdi:battery-off"
         elif field == "steering_wheel_heat":
             self._attr_icon = "mdi:steering"
+        elif field == "sentry_mode":
+            self._attr_icon = "mdi:cctv"
 
     @property
     def is_on(self) -> bool | None:
@@ -121,11 +137,14 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 val = (
                     self.coordinator.data.get(self.vin, {})
                     .get("additionalVehicleStatus", {})
-                    .get("climateStatus", {})
+                    .get(self.status_group, {})
                     .get(self.status_key)
                 )
                 if val is None:
                     return None
+                if self.field == "sentry_mode":
+                    # vstdModeState: "1" (on), "0" (off)
+                    return str(val) in {"1", "true", "True"}
                 # User: "1" (on), "0" (off), "2" (off)
                 # For defrost and seats, usually "1" is On.
                 return str(val) == "1"
@@ -186,18 +205,25 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                     }
                 ]
             }
+        elif self.field == "sentry_mode":
+            service_id = "RSM"
+            setting = {
+                "serviceParameters": [
+                    {
+                        "key": "rsm",
+                        "value": "6"
+                    }
+                ]
+            }
 
         if setting:
             await self.coordinator.async_inc_invoke()
             await self.hass.async_add_executor_job(
                 vehicle.do_remote_control, command, service_id, setting
             )
-            # Only optimistically update for non-charging switches
-            if self.field != "charging":
-                self._update_local_state_optimistically(is_on=True)
-                self.async_write_ha_state()
-            # Wait for backend confirmation for charging
+
             if self.field == "charging":
+                # Wait for backend confirmation for charging
                 timeout = 30  # seconds
                 poll_interval = 2
                 waited = 0
@@ -223,7 +249,18 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 else:
                     self._update_local_state_optimistically(is_on=False)
                 self.async_write_ha_state()
-            await self.coordinator.async_request_refresh()
+            elif self.field == "sentry_mode":
+                # Delay refresh for senty mode
+                async def delayed_refresh():
+                    await asyncio.sleep(10)
+                    await self.coordinator.async_request_refresh()
+
+                self.hass.async_create_task(delayed_refresh())
+            else:
+                # Only optimistically update for non-charging switches
+                self._update_local_state_optimistically(is_on=True)
+                self.async_write_ha_state()
+                await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
@@ -266,6 +303,17 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                     }
                 ]
             }
+        elif self.field == "sentry_mode":
+            command = "stop"
+            service_id = "RSM"
+            setting = {
+                "serviceParameters": [
+                    {
+                        "key": "rsm",
+                        "value": "6"
+                    }
+                ]
+            }
 
         if setting:
             await self.coordinator.async_inc_invoke()
@@ -274,7 +322,14 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
             )
             self._update_local_state_optimistically(is_on=False)
             self.async_write_ha_state()
-            await self.coordinator.async_request_refresh()
+            if self.field == "sentry_mode":
+                async def delayed_refresh():
+                    await asyncio.sleep(10)
+                    await self.coordinator.async_request_refresh()
+
+                self.hass.async_create_task(delayed_refresh())
+            else:
+                await self.coordinator.async_request_refresh()
 
     def _update_local_state_optimistically(self, is_on: bool) -> None:
         """Update the coordinator data to reflect the change immediately."""
@@ -295,16 +350,18 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 ev_status["chargerState"] = "25"
             return
         else:
-            climate_status = (
+            status_group = (
                 data.setdefault("additionalVehicleStatus", {})
-                .setdefault("climateStatus", {})
+                .setdefault(self.status_group, {})
             )
 
             if self.field == "defrost":
-                climate_status[self.field] = "1" if is_on else "0"
+                status_group[self.field] = "1" if is_on else "0"
             elif self.field == "steering_wheel_heat":
                 # User says: "steerWhlHeatingSts": "1" when on, "2" when off
-                climate_status[self.status_key] = "1" if is_on else "2"
+                status_group[self.status_key] = "1" if is_on else "2"
+            elif self.field == "sentry_mode":
+                status_group[self.status_key] = "1" if is_on else "0"
 
     @property
     def device_info(self):

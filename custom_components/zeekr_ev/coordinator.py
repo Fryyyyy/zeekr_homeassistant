@@ -94,6 +94,10 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 vehicle_data = await self.hass.async_add_executor_job(
                     vehicle.get_status
                 )
+                if vehicle_state:
+                    vehicle_data.setdefault("additionalVehicleStatus", {})[
+                        "remoteControlState"
+                    ] = vehicle_state
                 data[vehicle.vin] = vehicle_data
 
                 # Always fetch charging status for every vehicle

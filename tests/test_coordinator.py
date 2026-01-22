@@ -8,6 +8,7 @@ from custom_components.zeekr_ev.const import DOMAIN
 class MockVehicle:
     def __init__(self, vin):
         self.vin = vin
+        self.get_remote_control_state = MagicMock()
         self.get_status = MagicMock()
         self.get_charging_status = MagicMock()
         self.get_charging_limit = MagicMock()

@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock, AsyncMock
+import asyncio
 import pytest
 from custom_components.zeekr_ev.switch import ZeekrSwitch, async_setup_entry
 from custom_components.zeekr_ev.const import DOMAIN
@@ -40,9 +41,15 @@ class DummyConfig:
 class DummyHass:
     def __init__(self):
         self.config = DummyConfig()
+        self._tasks = []
 
     async def async_add_executor_job(self, func, *args, **kwargs):
         return func(*args, **kwargs)
+
+    def async_create_task(self, coro):
+        task = asyncio.create_task(coro)
+        self._tasks.append(task)
+        return task
 
 
 @pytest.mark.asyncio
@@ -263,3 +270,82 @@ async def test_steering_wheel_switch():
     # Optimistic update
     assert coordinator.data[vin]["additionalVehicleStatus"]["climateStatus"]["steerWhlHeatingSts"] == "2"
     switch.async_write_ha_state.assert_called()
+
+
+@pytest.mark.asyncio
+async def test_sentry_mode_switch():
+    vin = "VIN1"
+    initial_data = {
+        vin: {
+            "additionalVehicleStatus": {
+                "remoteControlState": {
+                    "vstdModeState": "0"  # Off
+                }
+            }
+        }
+    }
+
+    coordinator = MockCoordinator(initial_data)
+    vehicle_mock = MagicMock()
+    coordinator.vehicles[vin] = vehicle_mock
+
+    switch = ZeekrSwitch(
+        coordinator,
+        vin,
+        "sentry_mode",
+        "Sentry Mode",
+        status_key="vstdModeState",
+        status_group="remoteControlState",
+    )
+    switch.hass = DummyHass()
+    switch.async_write_ha_state = MagicMock()
+
+    # Test is_on logic
+    assert switch.is_on is False
+
+    coordinator.data[vin]["additionalVehicleStatus"]["remoteControlState"]["vstdModeState"] = "1"
+    assert switch.is_on is True
+
+    # Reset
+    coordinator.data[vin]["additionalVehicleStatus"]["remoteControlState"]["vstdModeState"] = "0"
+
+    try:
+        # Test Turn On
+        await switch.async_turn_on()
+        vehicle_mock.do_remote_control.assert_called_with(
+            "start",
+            "RSM",
+            {
+                "serviceParameters": [
+                    {
+                        "key": "rsm",
+                        "value": "6"
+                    }
+                ]
+            }
+        )
+        # Optimistic update
+        assert coordinator.data[vin]["additionalVehicleStatus"]["remoteControlState"]["vstdModeState"] == "1"
+        switch.async_write_ha_state.assert_called()
+        # Test Turn Off
+        await switch.async_turn_off()
+        vehicle_mock.do_remote_control.assert_called_with(
+            "stop",
+            "RSM",
+            {
+                "serviceParameters": [
+                    {
+                        "key": "rsm",
+                        "value": "6"
+                    }
+                ]
+            }
+        )
+        # Optimistic update
+        assert coordinator.data[vin]["additionalVehicleStatus"]["remoteControlState"]["vstdModeState"] == "0"
+        switch.async_write_ha_state.assert_called()
+    finally:
+        # Cleanup delayed refresh tasks scheduled during test
+        for task in switch.hass._tasks:
+            task.cancel()
+        await asyncio.gather(*switch.hass._tasks, return_exceptions=True)
