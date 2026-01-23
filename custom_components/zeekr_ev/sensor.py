@@ -18,6 +18,7 @@ from homeassistant.const import (
     UnitOfLength,
     UnitOfPower,
     UnitOfPressure,
+    UnitOfSpeed,
     UnitOfTemperature,
 )
 from homeassistant.core import HomeAssistant
@@ -158,6 +159,57 @@ async def async_setup_entry(
                 .get("interiorTemp"),
                 UnitOfTemperature.CELSIUS,
                 SensorDeviceClass.TEMPERATURE,
+            )
+        )
+
+        # Trip 2 Sensors
+        # Trip 2 Distance
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "trip_2_distance",
+                "Trip 2 Distance",
+                lambda d: (
+                    float(d.get("additionalVehicleStatus", {})
+                    .get("runningStatus", {})
+                    .get("tripMeter2")) / 10
+                    if d.get("additionalVehicleStatus", {})
+                    .get("runningStatus", {})
+                    .get("tripMeter2") is not None
+                    else None
+                ),
+                UnitOfLength.KILOMETERS,
+                SensorDeviceClass.DISTANCE,
+                SensorStateClass.TOTAL_INCREASING,
+            )
+        )
+        # Trip 2 Average Speed
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "trip_2_avg_speed",
+                "Trip 2 Average Speed",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("runningStatus", {})
+                .get("avgSpeed"),
+                UnitOfSpeed.KILOMETERS_PER_HOUR,
+                SensorDeviceClass.SPEED,
+            )
+        )
+        # Trip 2 Average Consumption
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "trip_2_avg_consumption",
+                "Trip 2 Average Consumption",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("electricVehicleStatus", {})
+                .get("averPowerConsumption"),
+                "kWh/100km",
+                None,
             )
         )
 
