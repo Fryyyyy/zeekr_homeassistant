@@ -90,32 +90,40 @@ class ZeekrCoordinator(DataUpdateCoordinator):
 
             data = {}
             for vehicle in self.vehicles:
-                await self.request_stats.async_inc_request()
-                vehicle_state = await self.hass.async_add_executor_job(
-                    vehicle.get_remote_control_state
-                )
-                # get_status returns a dict, no need to wrap if it was a property, but it's a method calling network
-                await self.request_stats.async_inc_request()
-                vehicle_data = await self.hass.async_add_executor_job(
-                    vehicle.get_status
-                )
-                if vehicle_state:
-                    vehicle_data.setdefault("additionalVehicleStatus", {})[
-                        "remoteControlState"
-                    ] = vehicle_state
-                data[vehicle.vin] = vehicle_data
+                try:
+                    await self.request_stats.async_inc_request()
+                    vehicle_data = await self.hass.async_add_executor_job(
+                        vehicle.get_status
+                    )
+                except Exception as charge_err:
+                    _LOGGER.error("Error fetching remote control status for %s: %s", vehicle.vin, charge_err)
+                    # Skip this entire vehicle on error
+                    continue
 
-                # Fetch charging status if vehicle is currently charging
-                if vehicle_data.get("additionalVehicleStatus", {}).get("electricVehicleStatus", {}).get("chargerState"):
-                    try:
-                        await self.request_stats.async_inc_request()
-                        charging_status = await self.hass.async_add_executor_job(
-                            vehicle.get_charging_status
-                        )
-                        if charging_status:
-                            vehicle_data.setdefault("chargingStatus", {}).update(charging_status)
-                    except Exception as charge_err:
-                        _LOGGER.debug("Error fetching charging status for %s: %s", vehicle.vin, charge_err)
+                # Fetch remote control status
+                try:
+                    await self.request_stats.async_inc_request()
+                    vehicle_remote_state = await self.hass.async_add_executor_job(
+                        vehicle.get_remote_control_state
+                    )
+
+                    if vehicle_remote_state:
+                        vehicle_data.setdefault("additionalVehicleStatus", {})[
+                            "remoteControlState"
+                        ] = vehicle_remote_state
+                except Exception as charge_err:
+                    _LOGGER.debug("Error fetching remote control status for %s: %s", vehicle.vin, charge_err)
+
+                # Fetch charging status
+                try:
+                    await self.request_stats.async_inc_request()
+                    charging_status = await self.hass.async_add_executor_job(
+                        vehicle.get_charging_status
+                    )
+                    if charging_status:
+                        vehicle_data.setdefault("chargingStatus", {}).update(charging_status)
+                except Exception as charge_err:
+                    _LOGGER.debug("Error fetching charging status for %s: %s", vehicle.vin, charge_err)
 
                 # Fetch charging limit
                 try:
@@ -127,6 +135,8 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                         vehicle_data["chargingLimit"] = charging_limit
                 except Exception as limit_err:
                     _LOGGER.debug("Error fetching charging limit for %s: %s", vehicle.vin, limit_err)
+
+                data[vehicle.vin] = vehicle_data
 
             # Update latest poll time on every automatic poll
             self.latest_poll_time = datetime.now().isoformat()

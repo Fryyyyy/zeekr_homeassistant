@@ -54,7 +54,7 @@ async def async_setup_entry(
 
     coordinator: ZeekrCoordinator = hass.data[DOMAIN][entry.entry_id]
 
-    entities = []
+    entities: list[SensorEntity] = []
 
     # Add API Status sensor with token attributes (one per integration, not per vehicle)
     entities.append(ZeekrAPIStatusSensor(coordinator, entry.entry_id))
@@ -241,6 +241,8 @@ async def async_setup_entry(
                 )
             )
 
+        entities.append(ZeekrChargerStateSensor(coordinator, vin))
+
     async_add_entities(entities)
 
 
@@ -388,4 +390,36 @@ class ZeekrAPIStatSensor(CoordinatorEntity, SensorEntity):
             "name": "Zeekr API",
             "manufacturer": "Zeekr",
             "model": "API Integration",
+        }
+
+class ZeekrChargerStateSensor(CoordinatorEntity, SensorEntity):
+    """Sensor to expose raw chargerState value for diagnostics."""
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str):
+        super().__init__(coordinator)
+        self.vin = vin
+        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Charger State"
+        self._attr_unique_id = f"{vin}_charger_state"
+
+    @property
+    def state(self):
+        return (
+            self.coordinator.data.get(self.vin, {})
+            .get("additionalVehicleStatus", {})
+            .get("electricVehicleStatus", {})
+            .get("chargerState")
+        )
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "raw_charger_state": self.state
+        }
+
+    @property
+    def device_info(self):
+        """Return device info to attach sensor to car device."""
+        return {
+            "identifiers": {(DOMAIN, self.vin)},
+            "name": f"Zeekr {self.vin}",
+            "manufacturer": "Zeekr",
         }

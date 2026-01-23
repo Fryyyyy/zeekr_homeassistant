@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
@@ -13,6 +14,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import ZeekrCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -93,8 +96,9 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 )
                 if val is None:
                     return None
-                # "1" is charging, "26" is connected but finished.
-                return str(val) == "1"
+                # "2" (AC charging?), "1" (DC charging?), "25" (stopped AC?), "26" (stopped DC?)
+                # Treat 1 or 2 as charging, 25 or 26 as stopped
+                return str(val) in ("1", "2")
             else:
                 val = (
                     self.coordinator.data.get(self.vin, {})
@@ -115,19 +119,27 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
-        if self.field == "charging":
-            # Charging cannot be started remotely via this API
-            return
 
         vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
         if not vehicle:
             return
 
-        command = "start"
-        service_id = "ZAF"
         setting = None
+        service_id = None
+        command = "start"
 
-        if self.field == "defrost":
+        if self.field == "charging":
+            service_id = "RCS"
+            setting = {
+                "serviceParameters": [
+                    {
+                        "key": "rcs.restart",
+                        "value": "1"
+                    }
+                ]
+            }
+        elif self.field == "defrost":
+            service_id = "ZAF"
             setting = {
                 "serviceParameters": [
                     {
@@ -170,20 +182,53 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 ]
             }
 
+        if not service_id:
+            _LOGGER.error("Attempted to turn on unsupported switch field: %s", self.field)
+            return
+
         if setting:
             await self.coordinator.async_inc_invoke()
             await self.hass.async_add_executor_job(
                 vehicle.do_remote_control, command, service_id, setting
             )
-            self._update_local_state_optimistically(is_on=True)
-            self.async_write_ha_state()
-            if self.field == "sentry_mode":
+
+            if self.field == "charging":
+                # Wait for backend confirmation for charging
+                timeout = 30  # seconds
+                poll_interval = 2
+                waited = 0
+                charging_confirmed = False
+                while waited < timeout:
+                    try:
+                        # Poll all endpoints used by iOS app for confirmation
+                        status = await self.hass.async_add_executor_job(vehicle.get_charging_status)
+                        await asyncio.sleep(poll_interval)
+                        waited += poll_interval
+                        charger_state = (
+                            status.get("chargerState")
+                            if isinstance(status, dict) else None
+                        )
+                        # iOS trace: chargerState==2 is charging, 25 is stopped
+                        if charger_state is not None and str(charger_state) in ("1", "2"):
+                            charging_confirmed = True
+                            break
+                    except Exception as e:
+                        _LOGGER.info("Error while polling for charging status confirmation: %s", e)
+                        pass
+                if charging_confirmed:
+                    self._update_local_state_optimistically(is_on=True)
+                else:
+                    self._update_local_state_optimistically(is_on=False)
+                self.async_write_ha_state()
+            elif self.field == "sentry_mode":
                 async def delayed_refresh():
                     await asyncio.sleep(10)
                     await self.coordinator.async_request_refresh()
 
                 self.hass.async_create_task(delayed_refresh())
             else:
+                self._update_local_state_optimistically(is_on=True)
+                self.async_write_ha_state()
                 await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
@@ -192,11 +237,13 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
         if not vehicle:
             return
 
-        command = "start"
-        service_id = "ZAF"
+        command = "stop"
+        service_id = None
         setting = None
 
         if self.field == "defrost":
+            command = "start"
+            service_id = "ZAF"
             setting = {
                 "serviceParameters": [
                     {
@@ -206,7 +253,6 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 ]
             }
         elif self.field == "charging":
-            command = "stop"
             service_id = "RCS"
             setting = {
                 "serviceParameters": [
@@ -228,7 +274,6 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 ]
             }
         elif self.field == "sentry_mode":
-            command = "stop"
             service_id = "RSM"
             setting = {
                 "serviceParameters": [
@@ -266,11 +311,10 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 data.setdefault("additionalVehicleStatus", {})
                 .setdefault("electricVehicleStatus", {})
             )
-            # If turning off, set to "0" (or just not "1").
-            # If turning on (not supported), we wouldn't be here or it's optimistic.
-            if not is_on:
-                # Assuming "0" or "2" is stopped. Just setting to "0" to clear "1".
-                ev_status["chargerState"] = "0"
+            if is_on:
+                ev_status["chargerState"] = "2"
+            else:
+                ev_status["chargerState"] = "25"
         else:
             status_group = (
                 data.setdefault("additionalVehicleStatus", {})
