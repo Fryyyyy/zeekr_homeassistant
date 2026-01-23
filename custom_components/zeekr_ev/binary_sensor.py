@@ -132,6 +132,42 @@ async def async_setup_entry(
                 )
             )
 
+        # Window open sensors from climateStatus
+        # Status code mapping: "1" = Open, "2" = Closed
+        window_fields = {
+            "window_open_driver": ("winStatusDriver", "Window driver open"),
+            "window_open_passenger": ("winStatusPassenger", "Window passenger open"),
+            "window_open_driver_rear": (
+                "winStatusDriverRear",
+                "Window driver rear open",
+            ),
+            "window_open_passenger_rear": (
+                "winStatusPassengerRear",
+                "Window passenger rear open",
+            ),
+        }
+
+        for key, (field_name, label) in window_fields.items():
+            entities.append(
+                ZeekrBinarySensor(
+                    coordinator,
+                    vin,
+                    key,
+                    label,
+                    lambda d, f=field_name: (
+                        None
+                        if (
+                            v := d.get("additionalVehicleStatus", {})
+                            .get("climateStatus", {})
+                            .get(f)
+                        )
+                        is None
+                        else str(v) != "2"
+                    ),
+                    BinarySensorDeviceClass.WINDOW,
+                )
+            )
+
         # Tire Pre-Warning & Temp Warning
         for tire in ["Driver", "Passenger", "DriverRear", "PassengerRear"]:
             # Pre-Warning
