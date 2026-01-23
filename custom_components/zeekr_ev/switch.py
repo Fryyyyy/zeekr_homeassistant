@@ -284,6 +284,10 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 ]
             }
 
+        if not service_id:
+            _LOGGER.error("Attempted to turn off unsupported switch field: %s", self.field)
+            return
+
         if setting:
             await self.coordinator.async_inc_invoke()
             await self.hass.async_add_executor_job(
