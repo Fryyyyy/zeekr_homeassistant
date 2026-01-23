@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 import logging
+import time as time_module
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
@@ -25,7 +27,7 @@ async def async_setup_entry(
 ) -> None:
     """Set up the switch platform."""
     coordinator: ZeekrCoordinator = hass.data[DOMAIN][entry.entry_id]
-    entities: list[ZeekrSwitch] = []
+    entities: list[SwitchEntity] = []
 
     for vin in coordinator.data:
         entities.append(ZeekrSwitch(coordinator, vin, "defrost", "Defroster"))
@@ -49,6 +51,9 @@ async def async_setup_entry(
                 status_group="remoteControlState",
             )
         )
+        # Add charge plan and travel plan switches
+        entities.append(ZeekrChargePlanSwitch(coordinator, vin))
+        entities.append(ZeekrTravelPlanSwitch(coordinator, vin))
 
     async_add_entities(entities)
 
@@ -332,6 +337,218 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 status_group[self.status_key] = "1" if is_on else "2"
             elif self.field == "sentry_mode":
                 status_group[self.status_key] = "1" if is_on else "0"
+
+    @property
+    def device_info(self):
+        """Return device info."""
+        return {
+            "identifiers": {(DOMAIN, self.vin)},
+            "name": f"Zeekr {self.vin}",
+            "manufacturer": "Zeekr",
+        }
+
+
+class ZeekrChargePlanSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
+    """Zeekr Charge Plan Switch.
+
+    Turns the scheduled charging plan on or off.
+    When on, the car will only charge during the scheduled time window.
+    """
+
+    _attr_icon = "mdi:battery-clock"
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        """Initialize the charge plan switch."""
+        super().__init__(coordinator)
+        self.vin = vin
+        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Charge Plan"
+        self._attr_unique_id = f"{vin}_charge_plan"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if charge plan is active."""
+        try:
+            charge_plan = self.coordinator.data.get(self.vin, {}).get("chargePlan", {})
+            return charge_plan.get("command") == "start"
+        except (ValueError, TypeError, AttributeError):
+            return None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on the charge plan."""
+        vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
+        if not vehicle:
+            return
+
+        # Get current times from coordinator data
+        charge_plan = self.coordinator.data.get(self.vin, {}).get("chargePlan", {})
+        start_time = charge_plan.get("startTime", "01:15")
+        end_time = charge_plan.get("endTime", "06:45")
+
+        await self.coordinator.async_inc_invoke()
+        await self.hass.async_add_executor_job(
+            vehicle.set_charge_plan,
+            start_time,
+            end_time,
+            "start",  # command
+        )
+
+        # Optimistic update
+        self._update_local_state_optimistically(is_on=True)
+        self.async_write_ha_state()
+
+        await asyncio.sleep(2)
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off the charge plan."""
+        vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
+        if not vehicle:
+            return
+
+        # Get current times from coordinator data
+        charge_plan = self.coordinator.data.get(self.vin, {}).get("chargePlan", {})
+        start_time = charge_plan.get("startTime", "01:15")
+        end_time = charge_plan.get("endTime", "06:45")
+
+        await self.coordinator.async_inc_invoke()
+        await self.hass.async_add_executor_job(
+            vehicle.set_charge_plan,
+            start_time,
+            end_time,
+            "stop",  # command
+        )
+
+        # Optimistic update
+        self._update_local_state_optimistically(is_on=False)
+        self.async_write_ha_state()
+
+        await asyncio.sleep(2)
+        await self.coordinator.async_request_refresh()
+
+    def _update_local_state_optimistically(self, is_on: bool) -> None:
+        """Update the coordinator data to reflect the change immediately."""
+        data = self.coordinator.data.get(self.vin)
+        if not data:
+            return
+        charge_plan = data.setdefault("chargePlan", {})
+        charge_plan["command"] = "start" if is_on else "stop"
+
+    @property
+    def device_info(self):
+        """Return device info."""
+        return {
+            "identifiers": {(DOMAIN, self.vin)},
+            "name": f"Zeekr {self.vin}",
+            "manufacturer": "Zeekr",
+        }
+
+
+class ZeekrTravelPlanSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
+    """Zeekr Travel Plan Switch.
+
+    Turns the travel plan (pre-conditioning) on or off.
+    When on, the car will pre-condition at the scheduled departure time.
+    """
+
+    _attr_icon = "mdi:calendar-clock"
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        """Initialize the travel plan switch."""
+        super().__init__(coordinator)
+        self.vin = vin
+        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Travel Plan"
+        self._attr_unique_id = f"{vin}_travel_plan"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if travel plan is active."""
+        try:
+            travel_plan = self.coordinator.data.get(self.vin, {}).get("travelPlan", {})
+            return travel_plan.get("command") == "start"
+        except (ValueError, TypeError, AttributeError):
+            return None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn on the travel plan."""
+        vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
+        if not vehicle:
+            return
+
+        # Get current data from coordinator
+        travel_plan = self.coordinator.data.get(self.vin, {}).get("travelPlan", {})
+        start_time = travel_plan.get("startTime", "08:00")
+
+        # Calculate scheduled timestamp for today/tomorrow
+        now = datetime.datetime.now()
+        h, m = map(int, start_time.split(":")[:2])
+        target_dt = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if target_dt <= now:
+            target_dt += datetime.timedelta(days=1)
+        scheduled_time = int(time_module.mktime(target_dt.timetuple()) * 1000)
+
+        # Get AC and steering wheel heating options from travel plan data
+        ac = travel_plan.get("ac", "true")
+        bw = travel_plan.get("bw", "0")  # steering wheel
+        schedule_list = travel_plan.get("scheduleList", [])
+
+        await self.coordinator.async_inc_invoke()
+        await self.hass.async_add_executor_job(
+            vehicle.set_travel_plan,
+            "start",  # command
+            start_time,
+            str(scheduled_time),
+            ac,
+            bw,
+            schedule_list,
+        )
+
+        # Optimistic update
+        self._update_local_state_optimistically(is_on=True)
+        self.async_write_ha_state()
+
+        await asyncio.sleep(2)
+        await self.coordinator.async_request_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn off the travel plan."""
+        vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
+        if not vehicle:
+            return
+
+        # Get current data from coordinator
+        travel_plan = self.coordinator.data.get(self.vin, {}).get("travelPlan", {})
+        ac = travel_plan.get("ac", "true")
+        bw = travel_plan.get("bw", "0")
+        schedule_list = travel_plan.get("scheduleList", [])
+        scheduled_time = travel_plan.get("scheduledTime", "")
+        timer_id = travel_plan.get("timerId", "4")
+
+        await self.coordinator.async_inc_invoke()
+        await self.hass.async_add_executor_job(
+            vehicle.set_travel_plan,
+            "stop",  # command
+            "",  # start_time not needed for stop
+            str(scheduled_time),
+            ac,
+            bw,
+            schedule_list,
+            str(timer_id),
+        )
+
+        # Optimistic update
+        self._update_local_state_optimistically(is_on=False)
+        self.async_write_ha_state()
+
+        await asyncio.sleep(2)
+        await self.coordinator.async_request_refresh()
+
+    def _update_local_state_optimistically(self, is_on: bool) -> None:
+        """Update the coordinator data to reflect the change immediately."""
+        data = self.coordinator.data.get(self.vin)
+        if not data:
+            return
+        travel_plan = data.setdefault("travelPlan", {})
+        travel_plan["command"] = "start" if is_on else "stop"
 
     @property
     def device_info(self):
