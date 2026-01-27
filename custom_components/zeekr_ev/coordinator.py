@@ -141,6 +141,18 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Error fetching travel plan for %s: %s", vehicle.vin, e)
                 return None
 
+        async def fetch_journey_log():
+            if not hasattr(vehicle, "get_journey_log"):
+                return None
+            try:
+                await self.request_stats.async_inc_request()
+                return await self.hass.async_add_executor_job(
+                    lambda: vehicle.get_journey_log(page_size=50)
+                )
+            except Exception as e:
+                _LOGGER.debug("Error fetching journey log for %s: %s", vehicle.vin, e)
+                return None
+
         # Execute parallel tasks
         results = await asyncio.gather(
             fetch_remote_control_state(),
@@ -148,10 +160,11 @@ class ZeekrCoordinator(DataUpdateCoordinator):
             fetch_charging_limit(),
             fetch_charge_plan(),
             fetch_travel_plan(),
+            fetch_journey_log(),
             return_exceptions=True
         )
 
-        remote_state, charging_status, charging_limit, charge_plan, travel_plan = results
+        remote_state, charging_status, charging_limit, charge_plan, travel_plan, journey_log = results
 
         # Process results
         if isinstance(remote_state, dict) and remote_state:
@@ -170,6 +183,9 @@ class ZeekrCoordinator(DataUpdateCoordinator):
 
         if isinstance(travel_plan, dict) and travel_plan:
             vehicle_data["travelPlan"] = travel_plan
+
+        if isinstance(journey_log, (list, dict)) and journey_log:
+            vehicle_data["journeyLog"] = journey_log
 
         return vehicle.vin, vehicle_data
 
