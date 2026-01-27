@@ -136,6 +136,18 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 except Exception as limit_err:
                     _LOGGER.debug("Error fetching charging limit for %s: %s", vehicle.vin, limit_err)
 
+                # Fetch journey log
+                try:
+                    if hasattr(vehicle, "get_journey_log"):
+                        await self.request_stats.async_inc_request()
+                        journey_log = await self.hass.async_add_executor_job(
+                            lambda v=vehicle: v.get_journey_log(page_size=50)
+                        )
+                        if journey_log:
+                            vehicle_data["journeyLog"] = journey_log
+                except Exception as journey_err:
+                    _LOGGER.debug("Error fetching journey log for %s: %s", vehicle.vin, journey_err)
+                
                 data[vehicle.vin] = vehicle_data
 
             # Update latest poll time on every automatic poll
