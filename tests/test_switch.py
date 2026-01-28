@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 import asyncio
 import pytest
 from custom_components.zeekr_ev.switch import ZeekrSwitch, async_setup_entry
@@ -160,8 +160,26 @@ async def test_charging_switch():
     assert switch.is_on is False
 
     # Test Turn On
-    # TODO
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        vehicle_mock.get_charging_status = MagicMock(return_value={"chargerState": "2"})
+        await switch.async_turn_on()
 
+    vehicle_mock.do_remote_control.assert_called_with(
+        "start",
+        "RCS",
+        {
+            "serviceParameters": [
+                {
+                    "key": "rcs.restart",
+                    "value": "1"
+                }
+            ]
+        }
+    )
+    # Optimistic update
+    assert coordinator.data[vin]["additionalVehicleStatus"][
+        "electricVehicleStatus"]["chargerState"] == "2"
+    switch.async_write_ha_state.assert_called()
 
     # Test Turn Off (Stop Charging)
     await switch.async_turn_off()
@@ -320,7 +338,8 @@ async def test_sentry_mode_switch():
             }
         )
         # Optimistic update
-        # TODO
+        assert coordinator.data[vin]["additionalVehicleStatus"]["remoteControlState"]["vstdModeState"] == "1"
+        switch.async_write_ha_state.assert_called()
 
         # Test Turn Off
         await switch.async_turn_off()

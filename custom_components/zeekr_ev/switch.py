@@ -221,6 +221,9 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                     self._update_local_state_optimistically(is_on=False)
                 self.async_write_ha_state()
             elif self.field == "sentry_mode":
+                self._update_local_state_optimistically(is_on=True)
+                self.async_write_ha_state()
+
                 async def delayed_refresh():
                     await asyncio.sleep(10)
                     await self.coordinator.async_request_refresh()
