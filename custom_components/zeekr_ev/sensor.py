@@ -20,6 +20,7 @@ from homeassistant.const import (
     UnitOfPressure,
     UnitOfSpeed,
     UnitOfTemperature,
+    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
@@ -295,6 +296,92 @@ async def async_setup_entry(
 
         entities.append(ZeekrChargerStateSensor(coordinator, vin))
 
+        # Journey Log sensors
+        # Journey Log Last Distance
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "journey_log_last_distance",
+                "Journey Log Last Distance",
+                lambda d: d.get("journeyLog", {}).get("data", [{}])[0].get("traveledDistance") if d.get("journeyLog", {}).get("data") else None,
+                UnitOfLength.KILOMETERS,
+                SensorDeviceClass.DISTANCE,
+                None,
+            )
+        )
+        # Journey Log Last Avg Speed
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "journey_log_last_avg_speed",
+                "Journey Log Last Avg Speed",
+                lambda d: d.get("journeyLog", {}).get("data", [{}])[0].get("avgSpeed") if d.get("journeyLog", {}).get("data") else None,
+                UnitOfSpeed.KILOMETERS_PER_HOUR,
+                SensorDeviceClass.SPEED,
+                None,
+            )
+        )
+        # Journey Log Last Consumption
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "journey_log_last_consumption",
+                "Journey Log Last Consumption",
+                lambda d: d.get("journeyLog", {}).get("data", [{}])[0].get("electricConsumption") if d.get("journeyLog", {}).get("data") else None,
+                "kWh/100km",
+                None,
+                None,
+            )
+        )
+        # Journey Log Last Regeneration
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "journey_log_last_regeneration",
+                "Journey Log Last Regeneration",
+                lambda d: d.get("journeyLog", {}).get("data", [{}])[0].get("electricRegeneration") if d.get("journeyLog", {}).get("data") else None,
+                "Wh",
+                SensorDeviceClass.ENERGY,
+                None,
+            )
+        )
+        # Journey Log Last Duration
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "journey_log_last_duration",
+                "Journey Log Last Duration",
+                lambda d: (
+                    round((d.get("journeyLog", {}).get("data", [{}])[0].get("endTime", 0) - d.get("journeyLog", {}).get("data", [{}])[0].get("startTime", 0)) / 60000)
+                    if d.get("journeyLog", {}).get("data") and d.get("journeyLog", {}).get("data", [{}])[0].get("endTime") and d.get("journeyLog", {}).get("data", [{}])[0].get("startTime")
+                    else None
+                ),
+                UnitOfTime.MINUTES,
+                SensorDeviceClass.DURATION,
+                None,
+            )
+        )
+        # Journey Log Total Trips (from API total)
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "journey_log_total_trips",
+                "Journey Log Total Trips",
+                lambda d: d.get("journeyLog", {}).get("total"),
+                None,
+                None,
+                SensorStateClass.TOTAL,
+            )
+        )
+        # Journey Log sensor with trip history as attributes
+        entities.append(ZeekrJourneyLogSensor(coordinator, vin))
+
     async_add_entities(entities)
 
 
@@ -471,6 +558,80 @@ class ZeekrChargerStateSensor(CoordinatorEntity, SensorEntity):
     @property
     def device_info(self):
         """Return device info to attach sensor to car device."""
+        return {
+            "identifiers": {(DOMAIN, self.vin)},
+            "name": f"Zeekr {self.vin}",
+            "manufacturer": "Zeekr",
+        }
+
+
+class ZeekrJourneyLogSensor(CoordinatorEntity, SensorEntity):
+    """Zeekr Journey Log sensor with trip history as attributes."""
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str):
+        super().__init__(coordinator)
+        self.vin = vin
+        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Journey Log"
+        self._attr_unique_id = f"{vin}_journey_log"
+        self._attr_icon = "mdi:map-marker-path"
+
+    @property
+    def native_value(self):
+        """Return number of loaded trips."""
+        data = self.coordinator.data.get(self.vin, {})
+        journey_log = data.get("journeyLog", {})
+        trips = journey_log.get("data", [])
+        return len(trips)
+
+    @property
+    def extra_state_attributes(self):
+        """Return all trips as attributes."""
+        data = self.coordinator.data.get(self.vin, {})
+        journey_log = data.get("journeyLog", {})
+        trips_raw = journey_log.get("data", [])
+
+        if not trips_raw:
+            return {}
+
+        trips = []
+        for trip in trips_raw:
+            track_points = trip.get("trackPoints", [])
+            start_point = track_points[0] if track_points else {}
+            end_point = track_points[-1] if track_points else {}
+
+            # Calculate duration in minutes
+            start_ts = trip.get("startTime", 0)
+            end_ts = trip.get("endTime", 0)
+            duration_min = round((end_ts - start_ts) / 60000) if end_ts and start_ts else None
+
+            trips.append({
+                "trip_id": trip.get("tripId"),
+                "report_time": trip.get("reportTime"),
+                "vin": self.vin,
+                "start_time": start_ts,
+                "end_time": end_ts,
+                "duration_min": duration_min,
+                "distance_km": trip.get("traveledDistance"),
+                "avg_speed_kmh": trip.get("avgSpeed"),
+                "consumption_kwh": trip.get("electricConsumption"),
+                "regeneration_wh": trip.get("electricRegeneration"),
+                "start_lat": start_point.get("latitude"),
+                "start_lon": start_point.get("longitude"),
+                "end_lat": end_point.get("latitude"),
+                "end_lon": end_point.get("longitude"),
+                "start_odometer": trip.get("startOdometer"),
+                "end_odometer": trip.get("endOdometer"),
+            })
+
+        return {
+            "vin": self.vin,
+            "trips": trips,
+            "total_trips": journey_log.get("total", 0),
+        }
+
+    @property
+    def device_info(self):
+        """Return device info."""
         return {
             "identifiers": {(DOMAIN, self.vin)},
             "name": f"Zeekr {self.vin}",
