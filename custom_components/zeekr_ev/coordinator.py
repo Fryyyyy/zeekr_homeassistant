@@ -136,6 +136,28 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 except Exception as limit_err:
                     _LOGGER.debug("Error fetching charging limit for %s: %s", vehicle.vin, limit_err)
 
+                # Fetch Travel Plan
+                try:
+                    await self.request_stats.async_inc_request()
+                    travel_plan = await self.hass.async_add_executor_job(
+                        vehicle.get_travel_plan
+                    )
+                    if travel_plan:
+                        vehicle_data["travelPlan"] = travel_plan
+                except Exception as tp_err:
+                     _LOGGER.debug("Error fetching travel plan for %s: %s", vehicle.vin, tp_err)
+
+                # Fetch Charging Plan
+                try:
+                    await self.request_stats.async_inc_request()
+                    charging_plan = await self.hass.async_add_executor_job(
+                        vehicle.get_charging_plan
+                    )
+                    if charging_plan:
+                        vehicle_data["chargingPlan"] = charging_plan
+                except Exception as cp_err:
+                     _LOGGER.debug("Error fetching charging plan for %s: %s", vehicle.vin, cp_err)
+
                 data[vehicle.vin] = vehicle_data
 
             # Update latest poll time on every automatic poll

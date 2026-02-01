@@ -75,7 +75,7 @@ async def async_setup_entry(
                     d.get("additionalVehicleStatus", {})
                     .get("electricVehicleStatus", {})
                     .get("chargerState", "0")
-                ) in [1, 2, 15],
+                ) in [1, 2],
                 BinarySensorDeviceClass.BATTERY_CHARGING,
             )
         )
@@ -110,6 +110,22 @@ async def async_setup_entry(
             "trunk_open": ("trunkOpenStatus", "Trunk open"),
             "hood_open": ("engineHoodOpenStatus", "Hood open"),
         }
+
+        # Trunk Locked Sensor
+        entities.append(
+            ZeekrBinarySensor(
+                coordinator,
+                vin,
+                "trunk_locked",
+                "Trunk Locked",
+                lambda d: str(
+                    d.get("additionalVehicleStatus", {})
+                    .get("drivingSafetyStatus", {})
+                    .get("trunkLockStatus")
+                ) != "1",  # 1=Locked -> False (Off/Locked), anything else -> True (On/Unlocked)
+                BinarySensorDeviceClass.LOCK,
+            )
+        )
 
         for key, (field_name, label) in door_fields.items():
             entities.append(
@@ -163,7 +179,7 @@ async def async_setup_entry(
                     f"Tire Temp Warning {tire}",
                     lambda d, t=tire: (
                         None
-                        if (
+                         if (
                             v := d.get("additionalVehicleStatus", {})
                             .get("maintenanceStatus", {})
                             .get(f"tyreTempWarning{t}")
@@ -174,5 +190,50 @@ async def async_setup_entry(
                     BinarySensorDeviceClass.PROBLEM,
                 )
             )
+
+        # Mode Sensors
+        entities.append(
+            ZeekrBinarySensor(
+                coordinator,
+                vin,
+                "camping_mode",
+                "Camping Mode",
+                lambda d: str(
+                    d.get("additionalVehicleStatus", {})
+                    .get("sentry", {})
+                    .get("campingModeState")
+                ) == "1",
+                None,
+            )
+        )
+        entities.append(
+            ZeekrBinarySensor(
+                coordinator,
+                vin,
+                "car_wash_mode",
+                "Car Wash Mode",
+                lambda d: str(
+                    d.get("additionalVehicleStatus", {})
+                    .get("sentry", {})
+                    .get("washCarModeState")
+                ) == "1",
+                None,
+            )
+        )
+        # Washer Fluid Low
+        entities.append(
+            ZeekrBinarySensor(
+                coordinator,
+                vin,
+                "washer_fluid_low",
+                "Washer Fluid Low",
+                lambda d: str(
+                    d.get("additionalVehicleStatus", {})
+                    .get("maintenanceStatus", {})
+                    .get("washerFluidLevelStatus")
+                ) == "1",
+                BinarySensorDeviceClass.PROBLEM,
+            )
+        )
 
     async_add_entities(entities)

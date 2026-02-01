@@ -18,8 +18,8 @@ from homeassistant.const import (
     UnitOfLength,
     UnitOfPower,
     UnitOfPressure,
-    UnitOfSpeed,
     UnitOfTemperature,
+    UnitOfTime,
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
@@ -162,57 +162,6 @@ async def async_setup_entry(
             )
         )
 
-        # Trip 2 Sensors
-        # Trip 2 Distance
-        entities.append(
-            ZeekrSensor(
-                coordinator,
-                vin,
-                "trip_2_distance",
-                "Trip 2 Distance",
-                lambda d: (
-                    float(d.get("additionalVehicleStatus", {})
-                          .get("runningStatus", {})
-                          .get("tripMeter2")) / 10
-                    if d.get("additionalVehicleStatus", {})
-                    .get("runningStatus", {})
-                    .get("tripMeter2") is not None
-                    else None
-                ),
-                UnitOfLength.KILOMETERS,
-                SensorDeviceClass.DISTANCE,
-                SensorStateClass.TOTAL_INCREASING,
-            )
-        )
-        # Trip 2 Average Speed
-        entities.append(
-            ZeekrSensor(
-                coordinator,
-                vin,
-                "trip_2_avg_speed",
-                "Trip 2 Average Speed",
-                lambda d: d.get("additionalVehicleStatus", {})
-                .get("runningStatus", {})
-                .get("avgSpeed"),
-                UnitOfSpeed.KILOMETERS_PER_HOUR,
-                SensorDeviceClass.SPEED,
-            )
-        )
-        # Trip 2 Average Consumption
-        entities.append(
-            ZeekrSensor(
-                coordinator,
-                vin,
-                "trip_2_avg_consumption",
-                "Trip 2 Average Consumption",
-                lambda d: d.get("additionalVehicleStatus", {})
-                .get("electricVehicleStatus", {})
-                .get("averPowerConsumption"),
-                "kWh/100km",
-                None,
-            )
-        )
-
         # Tire Pressures
         for tire in ["Driver", "Passenger", "DriverRear", "PassengerRear"]:
             entities.append(
@@ -294,6 +243,75 @@ async def async_setup_entry(
             )
 
         entities.append(ZeekrChargerStateSensor(coordinator, vin))
+
+        # Service Sensors
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "distance_to_service",
+                "Distance to Service",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("maintenanceStatus", {})
+                .get("distanceToService"),
+                UnitOfLength.KILOMETERS,
+                SensorDeviceClass.DISTANCE,
+            )
+        )
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "days_to_service",
+                "Days to Service",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("maintenanceStatus", {})
+                .get("daysToService"),
+                UnitOfTime.DAYS,
+                None,
+            )
+        )
+
+        # Vehicle Status (Human Readable)
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "vehicle_status",
+                "Vehicle Status",
+                lambda d: {
+                    "0": "Deep Sleep",
+                    "1": "Parked",
+                    "2": "Unlocked",
+                    "3": "System Active",
+                    "4": "Ready",
+                    "13": "Active",
+                }.get(str(d.get("basicVehicleStatus", {}).get("usageMode")), f"Unknown ({d.get('basicVehicleStatus', {}).get('usageMode')})"),
+                None,
+                None,
+                None,
+            )
+        )
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "motor_status",
+                "Motor Status",
+                lambda d: {
+                    "engine-off": "Parked",
+                    "engine-running": "Driving",
+                    "ready": "Ready",
+                    "charging": "Charging",
+                }.get(str(d.get("basicVehicleStatus", {}).get("engineStatus")).lower(), d.get("basicVehicleStatus", {}).get("engineStatus")),
+                None,
+                None,
+                None,
+            )
+        )
+
+        # Formatted Charging Time
+        entities.append(ZeekrChargingTimeFormattedSensor(coordinator, vin))
 
     async_add_entities(entities)
 
@@ -444,7 +462,6 @@ class ZeekrAPIStatSensor(CoordinatorEntity, SensorEntity):
             "model": "API Integration",
         }
 
-
 class ZeekrChargerStateSensor(CoordinatorEntity, SensorEntity):
     """Sensor to expose raw chargerState value for diagnostics."""
     def __init__(self, coordinator: ZeekrCoordinator, vin: str):
@@ -471,6 +488,47 @@ class ZeekrChargerStateSensor(CoordinatorEntity, SensorEntity):
     @property
     def device_info(self):
         """Return device info to attach sensor to car device."""
+        return {
+            "identifiers": {(DOMAIN, self.vin)},
+            "name": f"Zeekr {self.vin}",
+            "manufacturer": "Zeekr",
+        }
+
+
+
+class ZeekrChargingTimeFormattedSensor(CoordinatorEntity, SensorEntity):
+    """Sensor for formatted charging time."""
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        super().__init__(coordinator)
+        self.vin = vin
+        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Charge Time Remaining"
+        self._attr_unique_id = f"{vin}_charge_time_remaining"
+        self._attr_icon = "mdi:timer-sand"
+
+    @property
+    def native_value(self):
+        val = (
+            self.coordinator.data.get(self.vin, {})
+            .get("additionalVehicleStatus", {})
+            .get("electricVehicleStatus", {})
+            .get("timeToFullyCharged")
+        )
+        
+        try:
+            minutes = int(val)
+            if minutes >= 2047 or minutes <= 0:
+                return "Not Charging"
+            
+            hours, mins = divmod(minutes, 60)
+            if hours > 0:
+                return f"{hours}h {mins}m"
+            return f"{mins}m"
+        except (ValueError, TypeError):
+            return "Unknown"
+
+    @property
+    def device_info(self):
         return {
             "identifiers": {(DOMAIN, self.vin)},
             "name": f"Zeekr {self.vin}",
