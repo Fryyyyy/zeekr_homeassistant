@@ -145,7 +145,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                     if travel_plan:
                         vehicle_data["travelPlan"] = travel_plan
                 except Exception as tp_err:
-                     _LOGGER.debug("Error fetching travel plan for %s: %s", vehicle.vin, tp_err)
+                    _LOGGER.debug("Error fetching travel plan for %s: %s", vehicle.vin, tp_err)
 
                 # Fetch Charging Plan
                 try:
@@ -156,7 +156,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                     if charging_plan:
                         vehicle_data["chargingPlan"] = charging_plan
                 except Exception as cp_err:
-                     _LOGGER.debug("Error fetching charging plan for %s: %s", vehicle.vin, cp_err)
+                    _LOGGER.debug("Error fetching charging plan for %s: %s", vehicle.vin, cp_err)
 
                 data[vehicle.vin] = vehicle_data
 

@@ -247,12 +247,17 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 else:
                     self._update_local_state_optimistically(is_on=False)
                 self.async_write_ha_state()
+
             elif self.field == "sentry_mode":
+                self._update_local_state_optimistically(is_on=True)
+                self.async_write_ha_state()
+                
                 async def delayed_refresh():
                     await asyncio.sleep(10)
                     await self.coordinator.async_request_refresh()
 
                 self.hass.async_create_task(delayed_refresh())
+
             else:
                 self._update_local_state_optimistically(is_on=True)
                 self.async_write_ha_state()
@@ -401,7 +406,8 @@ class ZeekrTravelPlanSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
     async def _send_plan(self, command):
         travel_plan = self.coordinator.data.get(self.vin, {}).get("travelPlan", {})
         vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
-        if not vehicle: return
+        if not vehicle:
+            return
 
         if command == "stop":
             payload = {
@@ -574,7 +580,8 @@ class ZeekrChargePlanSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
 
     async def async_turn_on(self, **kwargs):
         vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
-        if not vehicle: return
+        if not vehicle:
+            return
         plan = self.coordinator.data.get(self.vin, {}).get("chargingPlan", {})
         start = plan.get("startTime") or "01:15"
         end = plan.get("endTime") or "06:45"
@@ -587,7 +594,8 @@ class ZeekrChargePlanSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
 
     async def async_turn_off(self, **kwargs):
         vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
-        if not vehicle: return
+        if not vehicle:
+            return
         p = {"target": 2, "timerId": "2", "startTime": "01:15", "command": "stop"}
         
         await self.coordinator.async_inc_invoke()

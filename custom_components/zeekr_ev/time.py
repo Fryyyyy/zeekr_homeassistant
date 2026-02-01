@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import time, datetime
+from datetime import time
 import logging
 
 from homeassistant.components.time import TimeEntity
@@ -49,33 +49,19 @@ class ZeekrTravelDepartureTime(CoordinatorEntity, TimeEntity):
         """Return the next scheduled departure time."""
         data = self.coordinator.data.get(self.vin, {})
         
-        # 1. Try scheduleList
-        travel_plan = data.get("chargingLimit", {}) # Using chargingLimit endpoint data if travel in there? 
-        # Wait, travel plan is likely in its own key or merged. 
-        # In Zeekr 7X it was under "travel".
-        # In Zeekr EV client, getLatestTravelPlan is enabled.
-        # Coordinator puts results in data.
-        
-        # Let's check coordinator structure.
-        # Coordinator merges all data under VIN key?
-        # We need to find where 'travel' data is stored.
-        
-        # Checking existing code: coordinator.py is not open, but based on others:
-        # data = coordinator.data.get(vin, {})
-        # We should assume travel plan is in a known key.
-        # zeekr_7x used "travel" which came from URL_TRAVEL.
-        
         travel = data.get("travelPlan", {})
         schedule_list = travel.get("scheduleList") or []
         
         # Parse first valid time from schedule
         for p in schedule_list:
-             if isinstance(p, dict) and p.get("startTime"):
-                try:
-                    h, m = map(int, p.get("startTime").split(':'))
-                    return time(h, m)
-                except ValueError:
-                    continue
+            if isinstance(p, dict):
+                start = p.get("startTime")
+                if isinstance(start, str):
+                    try:
+                        h, m = map(int, start.split(':'))
+                        return time(h, m)
+                    except ValueError:
+                        continue
                     
         return None
 

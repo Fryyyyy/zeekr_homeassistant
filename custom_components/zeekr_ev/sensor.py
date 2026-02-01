@@ -462,6 +462,7 @@ class ZeekrAPIStatSensor(CoordinatorEntity, SensorEntity):
             "model": "API Integration",
         }
 
+
 class ZeekrChargerStateSensor(CoordinatorEntity, SensorEntity):
     """Sensor to expose raw chargerState value for diagnostics."""
     def __init__(self, coordinator: ZeekrCoordinator, vin: str):
@@ -493,8 +494,6 @@ class ZeekrChargerStateSensor(CoordinatorEntity, SensorEntity):
             "name": f"Zeekr {self.vin}",
             "manufacturer": "Zeekr",
         }
-
-
 
 class ZeekrChargingTimeFormattedSensor(CoordinatorEntity, SensorEntity):
     """Sensor for formatted charging time."""

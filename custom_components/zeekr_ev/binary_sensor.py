@@ -179,7 +179,7 @@ async def async_setup_entry(
                     f"Tire Temp Warning {tire}",
                     lambda d, t=tire: (
                         None
-                         if (
+                        if (
                             v := d.get("additionalVehicleStatus", {})
                             .get("maintenanceStatus", {})
                             .get(f"tyreTempWarning{t}")
