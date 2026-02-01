@@ -120,7 +120,7 @@ async def test_switch_async_setup_entry(hass, mock_config_entry):
     await async_setup_entry(hass, mock_config_entry, async_add_entities)
 
     assert async_add_entities.called
-    assert len(async_add_entities.call_args[0][0]) == 4
+    assert len(async_add_entities.call_args[0][0]) == 16
     # Ensure all switches are added
     types = [type(e) for e in async_add_entities.call_args[0][0]]
     assert ZeekrSwitch in types
