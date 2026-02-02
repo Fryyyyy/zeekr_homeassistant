@@ -487,8 +487,8 @@ class ZeekrTravelPlanSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
         scheduled_time = int(time_module.mktime(target_dt.timetuple()) * 1000)
 
         # Get AC and steering wheel heating options from travel plan data
-        ac = travel_plan.get("ac", "true")
-        bw = travel_plan.get("bw", "0")  # steering wheel
+        ac_preconditioning = travel_plan.get("ac", "true") == "true"
+        steering_wheel_heating = travel_plan.get("bw", "0") == "1"
         schedule_list = travel_plan.get("scheduleList", [])
 
         await self.coordinator.async_inc_invoke()
@@ -497,8 +497,8 @@ class ZeekrTravelPlanSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
             "start",  # command
             start_time,
             str(scheduled_time),
-            ac,
-            bw,
+            ac_preconditioning,
+            steering_wheel_heating,
             schedule_list,
         )
 
@@ -517,8 +517,8 @@ class ZeekrTravelPlanSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
 
         # Get current data from coordinator
         travel_plan = self.coordinator.data.get(self.vin, {}).get("travelPlan", {})
-        ac = travel_plan.get("ac", "true")
-        bw = travel_plan.get("bw", "0")
+        ac_preconditioning = travel_plan.get("ac", "true") == "true"
+        steering_wheel_heating = travel_plan.get("bw", "0") == "1"
         schedule_list = travel_plan.get("scheduleList", [])
         scheduled_time = travel_plan.get("scheduledTime", "")
         timer_id = travel_plan.get("timerId", "4")
@@ -529,8 +529,8 @@ class ZeekrTravelPlanSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
             "stop",  # command
             "",  # start_time not needed for stop
             str(scheduled_time),
-            ac,
-            bw,
+            ac_preconditioning,
+            steering_wheel_heating,
             schedule_list,
             str(timer_id),
         )
