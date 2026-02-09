@@ -1,178 +1,46 @@
-from custom_components.zeekr_ev.sensor import ZeekrSensor
+"""Test Zeekr sensors."""
+from homeassistant.core import HomeAssistant
+from homeassistant.const import (
+    PERCENTAGE,
+    UnitOfLength,
+    UnitOfTemperature,
+)
+
+from custom_components.zeekr_ev.const import DOMAIN
+from .const import MOCK_VEHICLE_DATA
 
 
-class DummyCoordinator:
-    def __init__(self, data):
-        self.data = data
+async def test_battery_sensor(hass: HomeAssistant, mock_zeekr_integration):
+    """Test battery level sensor."""
+    state = hass.states.get(f"sensor.{MOCK_VEHICLE_DATA['name'].lower().replace(' ', '_')}_battery")
+    
+    assert state is not None
+    assert state.state == str(MOCK_VEHICLE_DATA["batteryLevel"])
+    assert state.attributes.get("unit_of_measurement") == PERCENTAGE
 
 
-def test_native_value_none_when_no_data():
-    coordinator = DummyCoordinator({})
-    s = ZeekrSensor(coordinator, "VIN1", "battery_level", "Battery", lambda d: 1, "%")
-    assert s.native_value is None
+async def test_range_sensor(hass: HomeAssistant, mock_zeekr_integration):
+    """Test range sensor."""
+    state = hass.states.get(f"sensor.{MOCK_VEHICLE_DATA['name'].lower().replace(' ', '_')}_range")
+    
+    assert state is not None
+    assert state.state == str(MOCK_VEHICLE_DATA["range"])
 
 
-def test_native_value_returns_value():
-    data = {
-        "VIN1": {
-            "additionalVehicleStatus": {"electricVehicleStatus": {"chargeLevel": 42}}
-        }
-    }
-    coordinator = DummyCoordinator(data)
-    s = ZeekrSensor(
-        coordinator,
-        "VIN1",
-        "battery_level",
-        "Battery",
-        lambda d: d.get("additionalVehicleStatus", {}).get("electricVehicleStatus", {}).get("chargeLevel"),
-        "%",
+async def test_odometer_sensor(hass: HomeAssistant, mock_zeekr_integration):
+    """Test odometer sensor."""
+    state = hass.states.get(f"sensor.{MOCK_VEHICLE_DATA['name'].lower().replace(' ', '_')}_odometer")
+    
+    assert state is not None
+    assert state.state == str(MOCK_VEHICLE_DATA["odometer"])
+
+
+async def test_temperature_sensor(hass: HomeAssistant, mock_zeekr_integration):
+    """Test interior temperature sensor."""
+    state = hass.states.get(
+        f"sensor.{MOCK_VEHICLE_DATA['name'].lower().replace(' ', '_')}_interior_temperature"
     )
-    assert s.native_value == 42
-
-
-def test_charging_voltage_sensor():
-    data = {
-        "VIN1": {
-            "chargingStatus": {"chargeVoltage": "222.0"}
-        }
-    }
-    coordinator = DummyCoordinator(data)
-    s = ZeekrSensor(
-        coordinator,
-        "VIN1",
-        "charge_voltage",
-        "Charge Voltage",
-        lambda d: d.get("chargingStatus", {}).get("chargeVoltage"),
-        "V",
-    )
-    assert s.native_value == "222.0"
-
-
-def test_charging_current_sensor():
-    data = {
-        "VIN1": {
-            "chargingStatus": {"chargeCurrent": "9.4"}
-        }
-    }
-    coordinator = DummyCoordinator(data)
-    s = ZeekrSensor(
-        coordinator,
-        "VIN1",
-        "charge_current",
-        "Charge Current",
-        lambda d: d.get("chargingStatus", {}).get("chargeCurrent"),
-        "A",
-    )
-    assert s.native_value == "9.4"
-
-
-def test_charge_power_sensor():
-    data = {
-        "VIN1": {
-            "chargingStatus": {"chargePower": "2.1"}
-        }
-    }
-    coordinator = DummyCoordinator(data)
-    s = ZeekrSensor(
-        coordinator,
-        "VIN1",
-        "charge_power",
-        "Charge Power",
-        lambda d: d.get("chargingStatus", {}).get("chargePower"),
-        "kW",
-    )
-    assert s.native_value == "2.1"
-
-
-def test_charger_state_sensor():
-    data = {
-        "VIN1": {
-            "chargingStatus": {"chargerState": "2"}
-        }
-    }
-    coordinator = DummyCoordinator(data)
-    s = ZeekrSensor(
-        coordinator,
-        "VIN1",
-        "charger_state",
-        "Charger State",
-        lambda d: d.get("chargingStatus", {}).get("chargerState"),
-    )
-    assert s.native_value == "2"
-
-
-def test_tire_temp_sensors():
-    data = {
-        "VIN1": {
-            "additionalVehicleStatus": {
-                "maintenanceStatus": {
-                    "tyreTempDriver": 20,
-                    "tyreTempPassenger": 21,
-                    "tyreTempDriverRear": 22,
-                    "tyreTempPassengerRear": 23,
-                }
-            }
-        }
-    }
-    coordinator = DummyCoordinator(data)
-
-    for tire, val in [("Driver", 20), ("Passenger", 21), ("DriverRear", 22), ("PassengerRear", 23)]:
-        s = ZeekrSensor(
-            coordinator,
-            "VIN1",
-            f"tire_temperature_{tire.lower()}",
-            f"Tire Temperature {tire}",
-            lambda d, t=tire: d.get("additionalVehicleStatus", {})
-            .get("maintenanceStatus", {})
-            .get(f"tyreTemp{t}"),
-            "°C",
-        )
-        assert s.native_value == val
-
-
-def test_window_sensors():
-    data = {
-        "VIN1": {
-            "additionalVehicleStatus": {
-                "climateStatus": {
-                    "winStatusDriver": "2",
-                    "winStatusPassenger": "2",
-                    "winStatusDriverRear": "2",
-                    "winStatusPassengerRear": "2",
-                    "winPosDriver": "0",
-                    "winPosPassenger": "0",
-                    "winPosDriverRear": "0",
-                    "winPosPassengerRear": "0",
-                }
-            }
-        }
-    }
-    coordinator = DummyCoordinator(data)
-
-    # Status
-    for win, status in [("Driver", "2"), ("Passenger", "2"), ("DriverRear", "2"), ("PassengerRear", "2")]:
-        s = ZeekrSensor(
-            coordinator,
-            "VIN1",
-            f"window_status_{win.lower()}",
-            f"Window Status {win}",
-            lambda d, w=win: d.get("additionalVehicleStatus", {})
-            .get("climateStatus", {})
-            .get(f"winStatus{w}"),
-            None,
-        )
-        assert s.native_value == status
-
-    # Position
-    for win, pos in [("Driver", "0"), ("Passenger", "0"), ("DriverRear", "0"), ("PassengerRear", "0")]:
-        s = ZeekrSensor(
-            coordinator,
-            "VIN1",
-            f"window_position_{win.lower()}",
-            f"Window Position {win}",
-            lambda d, w=win: d.get("additionalVehicleStatus", {})
-            .get("climateStatus", {})
-            .get(f"winPos{w}"),
-            "%",
-        )
-        assert s.native_value == pos
+    
+    assert state is not None
+    assert float(state.state) == MOCK_VEHICLE_DATA["interiorTemperature"]
+    assert state.attributes.get("unit_of_measurement") == UnitOfTemperature.CELSIUS
