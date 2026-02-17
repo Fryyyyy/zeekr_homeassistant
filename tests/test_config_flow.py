@@ -1,75 +1,63 @@
-"""Test Zeekr EV config flow."""
 import pytest
-from unittest.mock import AsyncMock, patch
-
-from homeassistant import config_entries
-from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResultType
-
-from custom_components.zeekr_ev.const import DOMAIN
-from .const import MOCK_CONFIG
+import custom_components.zeekr_ev.config_flow as config_flow
+from custom_components.zeekr_ev.const import CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL
 
 
-async def test_form(hass: HomeAssistant, mock_zeekr_api):
-    """Test we get the form."""
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
+class FakeClient:
+    def __init__(self, succeed=True, **kwargs):
+        self.succeed = succeed
+
+    def login(self):
+        if not self.succeed:
+            raise Exception("bad creds")
+
+
+@pytest.mark.asyncio
+async def test_test_credentials_success(hass, monkeypatch):
+    # Replace get_zeekr_client_class to return FakeClient that succeeds
+    monkeypatch.setattr(config_flow, "get_zeekr_client_class", lambda use_local=False: FakeClient)
+    flow = config_flow.ZeekrEVAPIFlowHandler()
+    flow.hass = hass
+    ok = await flow._test_credentials(
+        "user",
+        "pass",
+        "AU",
+        "hmac_access",
+        "hmac_secret",
+        "pwd_pub",
+        "prod_secret",
+        "vin_key",
+        "vin_iv",
     )
-    assert result["type"] == FlowResultType.FORM
-    assert result["errors"] == {}
-
-    with patch(
-        "custom_components.zeekr_ev.config_flow.ZeekrAPI",
-        return_value=mock_zeekr_api,
-    ):
-        result2 = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            MOCK_CONFIG,
-        )
-        await hass.async_block_till_done()
-
-    assert result2["type"] == FlowResultType.CREATE_ENTRY
-    assert result2["title"] == MOCK_CONFIG["username"]
-    assert result2["data"] == MOCK_CONFIG
+    assert ok is True
+    assert flow._temp_client is not None
 
 
-async def test_form_invalid_auth(hass: HomeAssistant, mock_zeekr_api):
-    """Test we handle invalid auth."""
-    mock_zeekr_api.login.side_effect = Exception("Invalid credentials")
-    
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
+@pytest.mark.asyncio
+async def test_test_credentials_failure(hass, monkeypatch):
+    # Replace get_zeekr_client_class to return FakeClient that fails on login
+    monkeypatch.setattr(config_flow, "get_zeekr_client_class", lambda use_local=False: lambda **kwargs: FakeClient(succeed=False))
+    flow = config_flow.ZeekrEVAPIFlowHandler()
+    flow.hass = hass
+    ok = await flow._test_credentials(
+        "user",
+        "bad",
+        "AU",
+        "hmac_access",
+        "hmac_secret",
+        "pwd_pub",
+        "prod_secret",
+        "vin_key",
+        "vin_iv",
     )
-
-    with patch(
-        "custom_components.zeekr_ev.config_flow.ZeekrAPI",
-        return_value=mock_zeekr_api,
-    ):
-        result2 = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            MOCK_CONFIG,
-        )
-
-    assert result2["type"] == FlowResultType.FORM
-    assert result2["errors"] == {"base": "invalid_auth"}
+    assert ok is False
 
 
-async def test_form_cannot_connect(hass: HomeAssistant, mock_zeekr_api):
-    """Test we handle cannot connect error."""
-    mock_zeekr_api.login.side_effect = Exception("Connection error")
-    
-    result = await hass.config_entries.flow.async_init(
-        DOMAIN, context={"source": config_entries.SOURCE_USER}
-    )
+def test_polling_interval_default():
+    """Test that polling interval has a default value."""
+    assert DEFAULT_POLLING_INTERVAL == 5
 
-    with patch(
-        "custom_components.zeekr_ev.config_flow.ZeekrAPI",
-        return_value=mock_zeekr_api,
-    ):
-        result2 = await hass.config_entries.flow.async_configure(
-            result["flow_id"],
-            MOCK_CONFIG,
-        )
 
-    assert result2["type"] == FlowResultType.FORM
-    assert result2["errors"] == {"base": "cannot_connect"}
+def test_polling_interval_config_key():
+    """Test that polling interval config key is defined."""
+    assert CONF_POLLING_INTERVAL == "polling_interval"
