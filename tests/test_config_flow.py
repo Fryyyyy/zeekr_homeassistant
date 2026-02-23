@@ -78,8 +78,6 @@ def test_polling_interval_config_key():
 def test_validation_logic():
     """Test validation logic."""
     # Valid input (with base64 strings)
-    # 32 bytes base64 encoded is approx 44 chars
-    valid_32_b64 = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     # 200 chars valid b64
     valid_200_b64 = "A" * 200
     # 16 bytes base64 encoded is approx 24 chars
