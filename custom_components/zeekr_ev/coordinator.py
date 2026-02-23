@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta, datetime
 import logging
 from typing import TYPE_CHECKING, Optional
@@ -78,6 +79,72 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 return vehicle
         return None
 
+    async def _async_update_vehicle(self, vehicle: Vehicle) -> tuple[str, dict] | None:
+        """Fetch data for a single vehicle."""
+        try:
+            await self.request_stats.async_inc_request()
+            vehicle_data = await self.hass.async_add_executor_job(
+                vehicle.get_status
+            )
+        except Exception as charge_err:
+            _LOGGER.error("Error fetching status for %s: %s", vehicle.vin, charge_err)
+            return None
+
+        # Define parallel tasks
+        async def fetch_remote_control_state():
+            try:
+                await self.request_stats.async_inc_request()
+                return await self.hass.async_add_executor_job(
+                    vehicle.get_remote_control_state
+                )
+            except Exception as e:
+                _LOGGER.debug("Error fetching remote control status for %s: %s", vehicle.vin, e)
+                return None
+
+        async def fetch_charging_status():
+            try:
+                await self.request_stats.async_inc_request()
+                return await self.hass.async_add_executor_job(
+                    vehicle.get_charging_status
+                )
+            except Exception as e:
+                _LOGGER.debug("Error fetching charging status for %s: %s", vehicle.vin, e)
+                return None
+
+        async def fetch_charging_limit():
+            try:
+                await self.request_stats.async_inc_request()
+                return await self.hass.async_add_executor_job(
+                    vehicle.get_charging_limit
+                )
+            except Exception as e:
+                _LOGGER.debug("Error fetching charging limit for %s: %s", vehicle.vin, e)
+                return None
+
+        # Execute parallel tasks
+        results = await asyncio.gather(
+            fetch_remote_control_state(),
+            fetch_charging_status(),
+            fetch_charging_limit(),
+            return_exceptions=True
+        )
+
+        remote_state, charging_status, charging_limit = results
+
+        # Process results
+        if isinstance(remote_state, dict) and remote_state:
+            vehicle_data.setdefault("additionalVehicleStatus", {})[
+                "remoteControlState"
+            ] = remote_state
+
+        if isinstance(charging_status, dict) and charging_status:
+            vehicle_data.setdefault("chargingStatus", {}).update(charging_status)
+
+        if isinstance(charging_limit, dict) and charging_limit:
+            vehicle_data["chargingLimit"] = charging_limit
+
+        return vehicle.vin, vehicle_data
+
     async def _async_update_data(self) -> dict[str, dict]:
         """Fetch data from API endpoint."""
         try:
@@ -88,55 +155,18 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                     self.client.get_vehicle_list
                 )
 
+            # Update all vehicles in parallel
+            tasks = [self._async_update_vehicle(vehicle) for vehicle in self.vehicles]
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
             data = {}
-            for vehicle in self.vehicles:
-                try:
-                    await self.request_stats.async_inc_request()
-                    vehicle_data = await self.hass.async_add_executor_job(
-                        vehicle.get_status
-                    )
-                except Exception as charge_err:
-                    _LOGGER.error("Error fetching remote control status for %s: %s", vehicle.vin, charge_err)
-                    # Skip this entire vehicle on error
+            for result in results:
+                if isinstance(result, Exception):
+                    _LOGGER.error("Error updating vehicle: %s", result)
                     continue
-
-                # Fetch remote control status
-                try:
-                    await self.request_stats.async_inc_request()
-                    vehicle_remote_state = await self.hass.async_add_executor_job(
-                        vehicle.get_remote_control_state
-                    )
-
-                    if vehicle_remote_state:
-                        vehicle_data.setdefault("additionalVehicleStatus", {})[
-                            "remoteControlState"
-                        ] = vehicle_remote_state
-                except Exception as charge_err:
-                    _LOGGER.debug("Error fetching remote control status for %s: %s", vehicle.vin, charge_err)
-
-                # Fetch charging status
-                try:
-                    await self.request_stats.async_inc_request()
-                    charging_status = await self.hass.async_add_executor_job(
-                        vehicle.get_charging_status
-                    )
-                    if charging_status:
-                        vehicle_data.setdefault("chargingStatus", {}).update(charging_status)
-                except Exception as charge_err:
-                    _LOGGER.debug("Error fetching charging status for %s: %s", vehicle.vin, charge_err)
-
-                # Fetch charging limit
-                try:
-                    await self.request_stats.async_inc_request()
-                    charging_limit = await self.hass.async_add_executor_job(
-                        vehicle.get_charging_limit
-                    )
-                    if charging_limit:
-                        vehicle_data["chargingLimit"] = charging_limit
-                except Exception as limit_err:
-                    _LOGGER.debug("Error fetching charging limit for %s: %s", vehicle.vin, limit_err)
-
-                data[vehicle.vin] = vehicle_data
+                if result:
+                    vin, vehicle_data = result
+                    data[vin] = vehicle_data
 
             # Update latest poll time on every automatic poll
             self.latest_poll_time = datetime.now().isoformat()
