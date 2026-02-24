@@ -81,6 +81,7 @@ async def test_climate_optimistic_update():
 
     # Verify Delayed Refresh Task Created
     assert climate.hass.async_create_task.called
+    climate.hass.async_create_task.call_args[0][0].close()
 
     # Test Turn Off
     await climate.async_set_hvac_mode(HVACMode.OFF)
@@ -106,6 +107,7 @@ async def test_climate_optimistic_update():
 
     # Verify Delayed Refresh Task Created again
     assert climate.hass.async_create_task.call_count == 2
+    climate.hass.async_create_task.call_args[0][0].close()
 
 
 @pytest.mark.asyncio
@@ -136,3 +138,38 @@ async def test_climate_async_setup_entry(hass, mock_config_entry):
     # Check types
     types = [type(e) for e in async_add_entities.call_args[0][0]]
     assert ZeekrClimate in types
+
+
+@pytest.mark.asyncio
+async def test_climate_attributes(hass):
+    vin = "VIN1"
+    # Example timestamp from user: 1763418526287
+    # 2025-11-17 22:28:46.287 UTC
+    update_time_ms = 1763418526287
+    expected_iso = "2025-11-17T22:28:46.287000+00:00"
+
+    initial_data = {
+        vin: {
+            "additionalVehicleStatus": {
+                "climateStatus": {
+                    "updateTime": update_time_ms
+                }
+            }
+        }
+    }
+
+    coordinator = MockCoordinator(initial_data)
+    climate = ZeekrClimate(coordinator, vin)
+
+    attrs = climate.extra_state_attributes
+    assert attrs["last_updated"] == expected_iso
+
+    # Test missing updateTime
+    initial_data[vin]["additionalVehicleStatus"]["climateStatus"].pop("updateTime")
+    attrs = climate.extra_state_attributes
+    assert "last_updated" not in attrs
+
+    # Test invalid updateTime
+    initial_data[vin]["additionalVehicleStatus"]["climateStatus"]["updateTime"] = "invalid"
+    attrs = climate.extra_state_attributes
+    assert "last_updated" not in attrs

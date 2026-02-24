@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 from typing import Any
 
 from homeassistant.components.climate import (
@@ -169,6 +170,25 @@ class ZeekrClimate(CoordinatorEntity, ClimateEntity):
         # If currently running, update the temp by sending the command again
         if self.hvac_mode == HVACMode.HEAT_COOL:
             await self.async_set_hvac_mode(HVACMode.HEAT_COOL)
+
+    @property
+    def extra_state_attributes(self):
+        """Return the state attributes."""
+        attrs = {}
+        try:
+            val = (
+                self.coordinator.data.get(self.vin, {})
+                .get("additionalVehicleStatus", {})
+                .get("climateStatus", {})
+                .get("updateTime")
+            )
+            if val is not None:
+                # Convert milliseconds to datetime
+                dt = datetime.fromtimestamp(int(val) / 1000, tz=timezone.utc)
+                attrs["last_updated"] = dt.isoformat()
+        except (ValueError, TypeError, AttributeError):
+            pass
+        return attrs
 
     @property
     def device_info(self):
