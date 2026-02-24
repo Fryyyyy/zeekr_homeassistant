@@ -98,6 +98,60 @@ async def test_coordinator_update_all_calls_made():
 
 
 @pytest.mark.asyncio
+async def test_coordinator_update_multiple_vehicles():
+    """Test parallel updates for multiple vehicles."""
+    vin1 = "VIN1"
+    vin2 = "VIN2"
+
+    vehicle1 = MockVehicle(vin1)
+    vehicle1.get_status.return_value = {"status": "v1_status"}
+    vehicle1.get_remote_control_state.return_value = {"remote": "v1_remote"}
+    vehicle1.get_charging_status.return_value = {"charging": "v1_charging"}
+    vehicle1.get_charging_limit.return_value = {"limit": "v1_limit"}
+
+    vehicle2 = MockVehicle(vin2)
+    vehicle2.get_status.return_value = {"status": "v2_status"}
+    vehicle2.get_remote_control_state.return_value = {"remote": "v2_remote"}
+    vehicle2.get_charging_status.return_value = {"charging": "v2_charging"}
+    vehicle2.get_charging_limit.return_value = {"limit": "v2_limit"}
+
+    client = MockClient([vehicle1, vehicle2])
+    hass = DummyHass()
+
+    with patch("homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__", side_effect=mock_data_update_coordinator_init, autospec=True):
+        coordinator = ZeekrCoordinator(hass, client, DummyConfig())
+
+    # Mock stats
+    coordinator.request_stats = MagicMock()
+    coordinator.request_stats.async_load = AsyncMock()
+    coordinator.request_stats.async_inc_request = AsyncMock()
+    coordinator.request_stats.async_inc_invoke = AsyncMock()
+
+    try:
+        # Run update
+        data = await coordinator._async_update_data()
+
+        # Check vehicle 1 data
+        assert vin1 in data
+        assert data[vin1]["chargingLimit"]["limit"] == "v1_limit"
+        assert data[vin1]["chargingStatus"]["charging"] == "v1_charging"
+        assert data[vin1]["additionalVehicleStatus"]["remoteControlState"]["remote"] == "v1_remote"
+
+        # Check vehicle 2 data
+        assert vin2 in data
+        assert data[vin2]["chargingLimit"]["limit"] == "v2_limit"
+        assert data[vin2]["chargingStatus"]["charging"] == "v2_charging"
+        assert data[vin2]["additionalVehicleStatus"]["remoteControlState"]["remote"] == "v2_remote"
+
+        # Verify no cross-talk
+        assert data[vin1]["chargingLimit"]["limit"] != data[vin2]["chargingLimit"]["limit"]
+
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
 async def test_coordinator_update_status_failure_skips_others():
     vin = "VIN1"
     vehicle = MockVehicle(vin)
