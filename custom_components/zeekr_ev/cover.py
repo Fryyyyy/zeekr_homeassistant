@@ -31,10 +31,6 @@ async def async_setup_entry(
         entities.append(ZeekrSunshade(coordinator, vin))
         entities.append(ZeekrWindows(coordinator, vin))
 
-        # Add individual read-only windows
-        for win in ["Driver", "Passenger", "DriverRear", "PassengerRear"]:
-            entities.append(ZeekrWindow(coordinator, vin, win, f"Window {win}"))
-
     async_add_entities(entities)
 
 
@@ -288,69 +284,6 @@ class ZeekrWindows(CoordinatorEntity, CoverEntity):
         for win in ["Driver", "Passenger", "DriverRear", "PassengerRear"]:
             climate_status[f"winStatus{win}"] = status_val
             climate_status[f"winPos{win}"] = pos_val
-
-    @property
-    def device_info(self):
-        """Return device info."""
-        return {
-            "identifiers": {(DOMAIN, self.vin)},
-            "name": f"Zeekr {self.vin}",
-            "manufacturer": "Zeekr",
-        }
-
-
-class ZeekrWindow(CoordinatorEntity, CoverEntity):
-    """Zeekr Window (Read-Only) class."""
-
-    _attr_device_class = CoverDeviceClass.WINDOW
-    _attr_supported_features = CoverEntityFeature(0)
-
-    def __init__(self, coordinator: ZeekrCoordinator, vin: str, win_key: str, win_name: str) -> None:
-        """Initialize the cover entity."""
-        super().__init__(coordinator)
-        self.vin = vin
-        self.win_key = win_key
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} {win_name}"
-        self._attr_unique_id = f"{vin}_window_{win_key.lower()}"
-
-    @property
-    def is_closed(self) -> bool | None:
-        """Return if the window is closed."""
-        try:
-            val = (
-                self.coordinator.data.get(self.vin, {})
-                .get("additionalVehicleStatus", {})
-                .get("climateStatus", {})
-                .get(f"winStatus{self.win_key}")
-            )
-            if val is None:
-                return None
-            # "2" is Closed, "1" is Open
-            return str(val) == "2"
-        except (ValueError, TypeError, AttributeError):
-            return None
-
-    @property
-    def current_cover_position(self) -> int | None:
-        """Return current position of cover."""
-        try:
-            val = (
-                self.coordinator.data.get(self.vin, {})
-                .get("additionalVehicleStatus", {})
-                .get("climateStatus", {})
-                .get(f"winPos{self.win_key}")
-            )
-            return int(val) if val is not None else None
-        except (ValueError, TypeError, AttributeError):
-            return None
-
-    async def async_open_cover(self, **kwargs: Any) -> None:
-        """Open the cover (Not supported)."""
-        pass
-
-    async def async_close_cover(self, **kwargs: Any) -> None:
-        """Close cover (Not supported)."""
-        pass
 
     @property
     def device_info(self):
