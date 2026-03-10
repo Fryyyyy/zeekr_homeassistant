@@ -41,6 +41,9 @@ CONF_VIN_KEY = "vin_key"
 CONF_VIN_IV = "vin_iv"
 CONF_POLLING_INTERVAL = "polling_interval"
 CONF_USE_LOCAL_API = "use_local_api"
+CONF_DRIVE_SIDE = "drive_side"
+DRIVE_SIDE_LHD = "lhd"
+DRIVE_SIDE_RHD = "rhd"
 
 # Defaults
 DEFAULT_NAME = DOMAIN
