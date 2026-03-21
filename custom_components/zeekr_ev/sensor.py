@@ -26,10 +26,36 @@ from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, CONF_DRIVE_SIDE, DRIVE_SIDE_LHD, DRIVE_SIDE_RHD
 from .coordinator import ZeekrCoordinator
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def get_tire_position_label(api_position: str, drive_side: str) -> str:
+    """
+    Map API tire position to display label based on vehicle drive side.
+    
+    For RHD vehicles, only the rear tires are swapped (DriverRear <-> PassengerRear).
+    Front tires remain as-is because the driver is on the right side.
+    
+    Args:
+        api_position: The position from the API (Driver, Passenger, DriverRear, PassengerRear)
+        drive_side: The vehicle drive side (lhd or rhd)
+    
+    Returns:
+        The display label for the tire position
+    """
+    if drive_side == DRIVE_SIDE_RHD:
+        # For RHD vehicles, only swap rear tires
+        rhd_mapping = {
+            "DriverRear": "PassengerRear",
+            "PassengerRear": "DriverRear",
+        }
+        return rhd_mapping.get(api_position, api_position)
+    # For LHD (default), use the API position as-is
+    return api_position
+
 
 # Import the encryption function dynamically (try pip first, then local)
 zeekr_app_sig_module = None
@@ -214,13 +240,15 @@ async def async_setup_entry(
         )
 
         # Tire Pressures
+        drive_side = entry.data.get(CONF_DRIVE_SIDE, DRIVE_SIDE_LHD)
         for tire in ["Driver", "Passenger", "DriverRear", "PassengerRear"]:
+            display_label = get_tire_position_label(tire, drive_side)
             entities.append(
                 ZeekrSensor(
                     coordinator,
                     vin,
                     f"tire_pressure_{tire.lower()}",
-                    f"Tire Pressure {tire}",
+                    f"Tire Pressure {display_label}",
                     lambda d, t=tire: d.get("additionalVehicleStatus", {})
                     .get("maintenanceStatus", {})
                     .get(f"tyreStatus{t}"),
@@ -233,7 +261,7 @@ async def async_setup_entry(
                     coordinator,
                     vin,
                     f"tire_temperature_{tire.lower()}",
-                    f"Tire Temperature {tire}",
+                    f"Tire Temperature {display_label}",
                     lambda d, t=tire: d.get("additionalVehicleStatus", {})
                     .get("maintenanceStatus", {})
                     .get(f"tyreTemp{t}"),

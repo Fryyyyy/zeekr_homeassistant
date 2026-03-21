@@ -22,6 +22,9 @@ from .const import (
     CONF_VIN_KEY,
     CONF_COUNTRY_CODE,
     CONF_USE_LOCAL_API,
+    CONF_DRIVE_SIDE,
+    DRIVE_SIDE_LHD,
+    DRIVE_SIDE_RHD,
     DEFAULT_POLLING_INTERVAL,
     DOMAIN,
     COUNTRY_CODE_MAPPING,
@@ -208,6 +211,17 @@ class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
                         CONF_USE_LOCAL_API,
                         default=defaults.get(CONF_USE_LOCAL_API, False),
                     ): selector.BooleanSelector(),
+                    vol.Optional(
+                        CONF_DRIVE_SIDE,
+                        default=defaults.get(CONF_DRIVE_SIDE, DRIVE_SIDE_LHD),
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(value=DRIVE_SIDE_LHD, label="Left-Hand Drive (LHD)"),
+                                selector.SelectOptionDict(value=DRIVE_SIDE_RHD, label="Right-Hand Drive (RHD)"),
+                            ]
+                        )
+                    ),
                 }
             ),
             errors=self._errors,
@@ -417,6 +431,17 @@ class ZeekrEVAPIOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_USE_LOCAL_API,
                         default=data.get(CONF_USE_LOCAL_API, False),
                     ): selector.BooleanSelector(),
+                    vol.Optional(
+                        CONF_DRIVE_SIDE,
+                        default=data.get(CONF_DRIVE_SIDE, DRIVE_SIDE_LHD),
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(value=DRIVE_SIDE_LHD, label="Left-Hand Drive (LHD)"),
+                                selector.SelectOptionDict(value=DRIVE_SIDE_RHD, label="Right-Hand Drive (RHD)"),
+                            ]
+                        )
+                    ),
                 }
             ),
             errors=errors,
