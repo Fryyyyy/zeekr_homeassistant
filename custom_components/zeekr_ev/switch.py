@@ -49,6 +49,9 @@ async def async_setup_entry(
                 status_group="remoteControlState",
             )
         )
+        entities.append(ZeekrChargingScheduleSwitch(coordinator, vin))
+        entities.append(ZeekrTravelPlanSwitch(coordinator, vin))
+        entities.append(ZeekrDepartureACSwitch(coordinator, vin))
 
     async_add_entities(entities)
 
@@ -335,6 +338,226 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 status_group[self.status_key] = "1" if is_on else "2"
             elif self.field == "sentry_mode":
                 status_group[self.status_key] = "1" if is_on else "0"
+
+    @property
+    def device_info(self):
+        """Return device info."""
+        return {
+            "identifiers": {(DOMAIN, self.vin)},
+            "name": f"Zeekr {self.vin}",
+            "manufacturer": "Zeekr",
+        }
+
+
+class ZeekrChargingScheduleSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
+    """Switch to enable/disable the charging schedule."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Charging Schedule"
+    _attr_icon = "mdi:battery-clock"
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        """Initialize the charging schedule switch."""
+        super().__init__(coordinator)
+        self.vin = vin
+        self._attr_unique_id = f"{vin}_charging_schedule"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the charging schedule is active."""
+        try:
+            command = (
+                self.coordinator.data.get(self.vin, {})
+                .get("chargePlan", {})
+                .get("command")
+            )
+            if command is not None:
+                return str(command) == "start"
+        except (ValueError, TypeError, AttributeError):
+            pass
+        return None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable the charging schedule."""
+        await self._set_schedule("start")
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable the charging schedule."""
+        await self._set_schedule("stop")
+
+    async def _set_schedule(self, command: str) -> None:
+        """Set the charging schedule command."""
+        vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
+        if not vehicle:
+            return
+
+        current_plan = self.coordinator.data.get(self.vin, {}).get("chargePlan", {})
+        start_time = current_plan.get("startTime", "00:00")
+        end_time = current_plan.get("endTime", "06:00")
+        bc_cycle = current_plan.get("bcCycleActive", False)
+        bc_temp = current_plan.get("bcTempActive", False)
+
+        await self.coordinator.async_inc_invoke()
+        await self.hass.async_add_executor_job(
+            vehicle.set_charge_plan,
+            start_time,
+            end_time,
+            command,
+            bc_cycle,
+            bc_temp,
+        )
+
+        # Optimistic update
+        plan_data = self.coordinator.data.setdefault(self.vin, {}).setdefault("chargePlan", {})
+        plan_data["command"] = command
+        self.async_write_ha_state()
+
+    @property
+    def device_info(self):
+        """Return device info."""
+        return {
+            "identifiers": {(DOMAIN, self.vin)},
+            "name": f"Zeekr {self.vin}",
+            "manufacturer": "Zeekr",
+        }
+
+
+class ZeekrTravelPlanSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
+    """Switch to enable/disable the travel plan (pre-conditioning)."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Travel Plan"
+    _attr_icon = "mdi:car-clock"
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        """Initialize the travel plan switch."""
+        super().__init__(coordinator)
+        self.vin = vin
+        self._attr_unique_id = f"{vin}_travel_plan"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the travel plan is active."""
+        try:
+            command = (
+                self.coordinator.data.get(self.vin, {})
+                .get("travelPlan", {})
+                .get("command")
+            )
+            if command is not None:
+                return str(command) == "start"
+        except (ValueError, TypeError, AttributeError):
+            pass
+        return None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable the travel plan."""
+        await self._set_travel_plan("start")
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable the travel plan."""
+        await self._set_travel_plan("stop")
+
+    async def _set_travel_plan(self, command: str) -> None:
+        """Set the travel plan command."""
+        vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
+        if not vehicle:
+            return
+
+        current_plan = self.coordinator.data.get(self.vin, {}).get("travelPlan", {})
+        scheduled_time = current_plan.get("scheduledTime", "")
+        ac = current_plan.get("ac", "true")
+        ac_preconditioning = str(ac).lower() == "true"
+        bw = current_plan.get("bw", "0")
+        steering_wheel_heating = bw not in ("0", "", None)
+
+        await self.coordinator.async_inc_invoke()
+        await self.hass.async_add_executor_job(
+            vehicle.set_travel_plan,
+            command,
+            "",  # start_time
+            scheduled_time,
+            ac_preconditioning,
+            steering_wheel_heating,
+        )
+
+        # Optimistic update
+        plan_data = self.coordinator.data.setdefault(self.vin, {}).setdefault("travelPlan", {})
+        plan_data["command"] = command
+        self.async_write_ha_state()
+
+    @property
+    def device_info(self):
+        """Return device info."""
+        return {
+            "identifiers": {(DOMAIN, self.vin)},
+            "name": f"Zeekr {self.vin}",
+            "manufacturer": "Zeekr",
+        }
+
+
+class ZeekrDepartureACSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
+    """Switch to enable/disable AC pre-conditioning on departure."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Departure AC"
+    _attr_icon = "mdi:air-conditioner"
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        """Initialize the departure AC switch."""
+        super().__init__(coordinator)
+        self.vin = vin
+        self._attr_unique_id = f"{vin}_departure_ac"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if AC is enabled for departure."""
+        try:
+            ac = (
+                self.coordinator.data.get(self.vin, {})
+                .get("travelPlan", {})
+                .get("ac")
+            )
+            if ac is not None:
+                return str(ac).lower() == "true"
+        except (ValueError, TypeError, AttributeError):
+            pass
+        return None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Enable AC on departure."""
+        await self._set_departure_ac(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Disable AC on departure."""
+        await self._set_departure_ac(False)
+
+    async def _set_departure_ac(self, ac_on: bool) -> None:
+        """Set the departure AC setting."""
+        vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
+        if not vehicle:
+            return
+
+        current_plan = self.coordinator.data.get(self.vin, {}).get("travelPlan", {})
+        command = current_plan.get("command", "start")
+        scheduled_time = current_plan.get("scheduledTime", "")
+        bw = current_plan.get("bw", "0")
+        steering_wheel_heating = bw not in ("0", "", None)
+
+        await self.coordinator.async_inc_invoke()
+        await self.hass.async_add_executor_job(
+            vehicle.set_travel_plan,
+            command,
+            "",  # start_time
+            scheduled_time,
+            ac_on,
+            steering_wheel_heating,
+        )
+
+        # Optimistic update
+        plan_data = self.coordinator.data.setdefault(self.vin, {}).setdefault("travelPlan", {})
+        plan_data["ac"] = "true" if ac_on else "false"
+        self.async_write_ha_state()
 
     @property
     def device_info(self):

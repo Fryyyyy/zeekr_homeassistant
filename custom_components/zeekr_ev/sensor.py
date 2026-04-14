@@ -270,6 +270,86 @@ async def async_setup_entry(
                 )
             )
 
+        # Range at 20% SoC
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "range_at_20_soc",
+                "Range at 20% SoC",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("electricVehicleStatus", {})
+                .get("distanceToEmptyOnBattery20Soc"),
+                UnitOfLength.KILOMETERS,
+                SensorDeviceClass.DISTANCE,
+            )
+        )
+        # Range at 100% SoC
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "range_at_100_soc",
+                "Range at 100% SoC",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("electricVehicleStatus", {})
+                .get("distanceToEmptyOnBattery100Soc"),
+                UnitOfLength.KILOMETERS,
+                SensorDeviceClass.DISTANCE,
+            )
+        )
+        # 12V Battery Voltage
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "battery_12v_voltage",
+                "12V Battery Voltage",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("electricVehicleStatus", {})
+                .get("mainBatteryStatus", {})
+                .get("voltage")
+                if isinstance(
+                    d.get("additionalVehicleStatus", {})
+                    .get("electricVehicleStatus", {})
+                    .get("mainBatteryStatus"),
+                    dict,
+                )
+                else None,
+                UnitOfElectricPotential.VOLT,
+                SensorDeviceClass.VOLTAGE,
+            )
+        )
+        # HV Battery Temperature Level
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "hv_battery_temp_level",
+                "HV Battery Temperature Level",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("electricVehicleStatus", {})
+                .get("hvTempLevel"),
+                None,
+                None,
+            )
+        )
+
+        # Sunroof Position
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "sunroof_position",
+                "Sunroof Position",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("climateStatus", {})
+                .get("sunroofPos"),
+                PERCENTAGE,
+                None,
+            )
+        )
+
         # Charging Status Sensors (only when charging)
         if data.get("chargingStatus"):
             # Charge Voltage

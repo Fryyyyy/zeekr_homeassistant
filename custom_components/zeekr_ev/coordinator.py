@@ -121,15 +121,37 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Error fetching charging limit for %s: %s", vehicle.vin, e)
                 return None
 
+        async def fetch_charge_plan():
+            try:
+                await self.request_stats.async_inc_request()
+                return await self.hass.async_add_executor_job(
+                    vehicle.get_charge_plan
+                )
+            except Exception as e:
+                _LOGGER.debug("Error fetching charge plan for %s: %s", vehicle.vin, e)
+                return None
+
+        async def fetch_travel_plan():
+            try:
+                await self.request_stats.async_inc_request()
+                return await self.hass.async_add_executor_job(
+                    vehicle.get_travel_plan
+                )
+            except Exception as e:
+                _LOGGER.debug("Error fetching travel plan for %s: %s", vehicle.vin, e)
+                return None
+
         # Execute parallel tasks
         results = await asyncio.gather(
             fetch_remote_control_state(),
             fetch_charging_status(),
             fetch_charging_limit(),
+            fetch_charge_plan(),
+            fetch_travel_plan(),
             return_exceptions=True
         )
 
-        remote_state, charging_status, charging_limit = results
+        remote_state, charging_status, charging_limit, charge_plan, travel_plan = results
 
         # Process results
         if isinstance(remote_state, dict) and remote_state:
@@ -142,6 +164,12 @@ class ZeekrCoordinator(DataUpdateCoordinator):
 
         if isinstance(charging_limit, dict) and charging_limit:
             vehicle_data["chargingLimit"] = charging_limit
+
+        if isinstance(charge_plan, dict) and charge_plan:
+            vehicle_data["chargePlan"] = charge_plan
+
+        if isinstance(travel_plan, dict) and travel_plan:
+            vehicle_data["travelPlan"] = travel_plan
 
         return vehicle.vin, vehicle_data
 
