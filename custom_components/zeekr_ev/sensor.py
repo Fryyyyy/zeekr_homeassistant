@@ -35,14 +35,14 @@ _LOGGER = logging.getLogger(__name__)
 def get_tire_position_label(api_position: str, drive_side: str) -> str:
     """
     Map API tire position to display label based on vehicle drive side.
-    
+
     For RHD vehicles, only the rear tires are swapped (DriverRear <-> PassengerRear).
     Front tires remain as-is because the driver is on the right side.
-    
+
     Args:
         api_position: The position from the API (Driver, Passenger, DriverRear, PassengerRear)
         drive_side: The vehicle drive side (lhd or rhd)
-    
+
     Returns:
         The display label for the tire position
     """
