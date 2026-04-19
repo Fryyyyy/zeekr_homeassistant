@@ -270,16 +270,29 @@ async def async_setup_entry(
                 )
             )
 
-        # Estimated Range to 20% SoC (BMS dynamic value from Zeekr API)
+        # BMS diagnostic sensors (raw API values from Zeekr Connected API)
         entities.append(
             ZeekrSensor(
                 coordinator,
                 vin,
-                "range_at_20_soc",
-                "Estimated Range to 20%",
+                "distance_to_empty_on_battery_20_soc",
+                "distanceToEmptyOnBattery20Soc",
                 lambda d: d.get("additionalVehicleStatus", {})
                 .get("electricVehicleStatus", {})
                 .get("distanceToEmptyOnBattery20Soc"),
+                UnitOfLength.KILOMETERS,
+                SensorDeviceClass.DISTANCE,
+            )
+        )
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "distance_to_empty_on_battery_100_soc",
+                "distanceToEmptyOnBattery100Soc",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("electricVehicleStatus", {})
+                .get("distanceToEmptyOnBattery100Soc"),
                 UnitOfLength.KILOMETERS,
                 SensorDeviceClass.DISTANCE,
             )
