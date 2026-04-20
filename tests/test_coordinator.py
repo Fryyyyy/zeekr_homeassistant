@@ -12,6 +12,8 @@ class MockVehicle:
         self.get_status = MagicMock()
         self.get_charging_status = MagicMock()
         self.get_charging_limit = MagicMock()
+        self.get_charge_plan = MagicMock()
+        self.get_travel_plan = MagicMock()
 
 
 class MockClient:
@@ -62,6 +64,8 @@ async def test_coordinator_update_all_calls_made():
     vehicle.get_remote_control_state.return_value = {"remote": "ok"}
     vehicle.get_charging_status.return_value = {"status": "charging"}
     vehicle.get_charging_limit.return_value = {"soc": "800"}
+    vehicle.get_charge_plan.return_value = {"startTime": "00:00", "endTime": "06:00"}
+    vehicle.get_travel_plan.return_value = {"scheduledTime": "1700000000000"}
 
     client = MockClient([vehicle])
     hass = DummyHass()
@@ -84,6 +88,8 @@ async def test_coordinator_update_all_calls_made():
         vehicle.get_remote_control_state.assert_called_once()
         vehicle.get_charging_status.assert_called_once()
         vehicle.get_charging_limit.assert_called_once()
+        vehicle.get_charge_plan.assert_called_once()
+        vehicle.get_travel_plan.assert_called_once()
 
         # Verify data structure
         assert "chargingLimit" in data[vin]
@@ -92,6 +98,10 @@ async def test_coordinator_update_all_calls_made():
         assert data[vin]["chargingStatus"]["status"] == "charging"
         assert "remoteControlState" in data[vin]["additionalVehicleStatus"]
         assert data[vin]["additionalVehicleStatus"]["remoteControlState"]["remote"] == "ok"
+        assert "chargePlan" in data[vin]
+        assert data[vin]["chargePlan"]["startTime"] == "00:00"
+        assert "travelPlan" in data[vin]
+        assert data[vin]["travelPlan"]["scheduledTime"] == "1700000000000"
     finally:
         if coordinator._unsub_reset:
             coordinator._unsub_reset()
@@ -108,12 +118,16 @@ async def test_coordinator_update_multiple_vehicles():
     vehicle1.get_remote_control_state.return_value = {"remote": "v1_remote"}
     vehicle1.get_charging_status.return_value = {"charging": "v1_charging"}
     vehicle1.get_charging_limit.return_value = {"limit": "v1_limit"}
+    vehicle1.get_charge_plan.return_value = {"startTime": "00:00"}
+    vehicle1.get_travel_plan.return_value = {"scheduledTime": "1700000000000"}
 
     vehicle2 = MockVehicle(vin2)
     vehicle2.get_status.return_value = {"status": "v2_status"}
     vehicle2.get_remote_control_state.return_value = {"remote": "v2_remote"}
     vehicle2.get_charging_status.return_value = {"charging": "v2_charging"}
     vehicle2.get_charging_limit.return_value = {"limit": "v2_limit"}
+    vehicle2.get_charge_plan.return_value = {"startTime": "01:00"}
+    vehicle2.get_travel_plan.return_value = {"scheduledTime": "1700000000001"}
 
     client = MockClient([vehicle1, vehicle2])
     hass = DummyHass()
@@ -180,6 +194,8 @@ async def test_coordinator_update_status_failure_skips_others():
         vehicle.get_remote_control_state.assert_not_called()
         vehicle.get_charging_status.assert_not_called()
         vehicle.get_charging_limit.assert_not_called()
+        vehicle.get_charge_plan.assert_not_called()
+        vehicle.get_travel_plan.assert_not_called()
 
         # No data for this VIN
         assert vin not in data
@@ -196,6 +212,8 @@ async def test_coordinator_update_charging_limit_failure():
     vehicle.get_charging_limit.side_effect = Exception("API Error")
     vehicle.get_remote_control_state.return_value = {"remote": "ok"}
     vehicle.get_charging_status.return_value = {"status": "ok"}
+    vehicle.get_charge_plan.return_value = {"startTime": "00:00"}
+    vehicle.get_travel_plan.return_value = {"scheduledTime": "1700000000000"}
 
     client = MockClient([vehicle])
     hass = DummyHass()

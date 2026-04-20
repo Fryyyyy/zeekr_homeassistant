@@ -35,14 +35,14 @@ _LOGGER = logging.getLogger(__name__)
 def get_tire_position_label(api_position: str, drive_side: str) -> str:
     """
     Map API tire position to display label based on vehicle drive side.
-    
+
     For RHD vehicles, only the rear tires are swapped (DriverRear <-> PassengerRear).
     Front tires remain as-is because the driver is on the right side.
-    
+
     Args:
         api_position: The position from the API (Driver, Passenger, DriverRear, PassengerRear)
         drive_side: The vehicle drive side (lhd or rhd)
-    
+
     Returns:
         The display label for the tire position
     """
@@ -270,6 +270,33 @@ async def async_setup_entry(
                 )
             )
 
+        # BMS diagnostic sensors (raw API values from Zeekr Connected API)
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "distance_to_empty_on_battery_20_soc",
+                "distanceToEmptyOnBattery20Soc",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("electricVehicleStatus", {})
+                .get("distanceToEmptyOnBattery20Soc"),
+                UnitOfLength.KILOMETERS,
+                SensorDeviceClass.DISTANCE,
+            )
+        )
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "distance_to_empty_on_battery_100_soc",
+                "distanceToEmptyOnBattery100Soc",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("electricVehicleStatus", {})
+                .get("distanceToEmptyOnBattery100Soc"),
+                UnitOfLength.KILOMETERS,
+                SensorDeviceClass.DISTANCE,
+            )
+        )
         # Charging Status Sensors (only when charging)
         if data.get("chargingStatus"):
             # Charge Voltage
