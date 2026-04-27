@@ -89,7 +89,7 @@ async def async_setup_entry(
     # Status sensors
     entities.append(ZeekrVehicleStatusSensor(coordinator, entry.entry_id))
     entities.append(ZeekrEngineStatusSensor(coordinator, entry.entry_id))
-    
+
     # Add API stats sensors (global, not per vehicle)
     entities.append(
         ZeekrAPIStatSensor(
@@ -544,14 +544,13 @@ class ZeekrChargingTimeFormattedSensor(CoordinatorEntity, SensorEntity):
     """Sensor for formatted display of charging time remaining (e.g., 2h 53m)."""
 
     def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator)
+        self.vin = vin
+        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Charging Time Remaining"
+        self._attr_unique_id = f"{vin}_charging_time_formatted"
+        self._attr_icon = "mdi:timer-sand"
 
-         """Initialize the sensor."""
-         super().__init__(coordinator)
-         self.vin = vin
-         self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Charging Time Remaining"
-         self._attr_unique_id = f"{vin}_charging_time_formatted"
-         self._attr_icon = "mdi:timer-sand"
- 
     @property
     def native_value(self) -> str | None:
         """Return the formatted time remaining."""
@@ -567,13 +566,13 @@ class ZeekrChargingTimeFormattedSensor(CoordinatorEntity, SensorEntity):
 
         if raw_minutes is None:
             return None
-                
+
         try:
             minutes = int(raw_minutes)
             # 2047 is the typical "not charging" value from the API
             if minutes >= 2047 or minutes <= 0:
                 return "Not charging"
-            
+
             hours, mins = divmod(minutes, 60)
             if hours > 0:
                 return f"{hours}h {mins}m"

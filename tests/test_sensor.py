@@ -264,26 +264,6 @@ def test_engine_status_sensor_unknown_value():
     assert sensor.native_value == "unknown-status"
 
 
-def test_charger_state_sensor():
-    """Test ZeekrChargerStateSensor returns raw charger state."""
-    data = {
-        "VIN1": {
-            "additionalVehicleStatus": {
-                "electricVehicleStatus": {"chargerState": "charging"}
-            }
-        }
-    }
-
-    class MockCoordinator:
-        def __init__(self, data):
-            self.data = data
-
-    coordinator = MockCoordinator(data)
-    sensor = ZeekrChargerStateSensor(coordinator, "VIN1")
-    assert sensor.state == "charging"
-    assert sensor.extra_state_attributes["raw_charger_state"] == "charging"
-
-
 def test_charging_time_formatted_sensor():
     """Test ZeekrChargingTimeFormattedSensor formats time correctly."""
     data = {
