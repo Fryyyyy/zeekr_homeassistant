@@ -3,7 +3,6 @@ from custom_components.zeekr_ev.sensor import (
     ZeekrAPIStatusSensor,
     ZeekrVehicleStatusSensor,
     ZeekrEngineStatusSensor,
-    ZeekrChargerStateSensor,
     ZeekrChargingTimeFormattedSensor,
 )
 
