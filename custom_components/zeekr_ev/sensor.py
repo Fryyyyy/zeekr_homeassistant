@@ -86,10 +86,6 @@ async def async_setup_entry(
     # Add API Status sensor with token attributes (one per integration, not per vehicle)
     entities.append(ZeekrAPIStatusSensor(coordinator, entry.entry_id))
 
-    # Status sensors
-    entities.append(ZeekrVehicleStatusSensor(coordinator, entry.entry_id))
-    entities.append(ZeekrEngineStatusSensor(coordinator, entry.entry_id))
-
     # Add API stats sensors (global, not per vehicle)
     entities.append(
         ZeekrAPIStatSensor(
@@ -354,6 +350,10 @@ async def async_setup_entry(
 
         # Formatted Charging Time Remaining Sensor
         entities.append(ZeekrChargingTimeFormattedSensor(coordinator, vin))
+
+        # Status sensors
+        entities.append(ZeekrVehicleStatusSensor(coordinator, vin))
+        entities.append(ZeekrEngineStatusSensor(coordinator, vin))
 
     async_add_entities(entities)
 
