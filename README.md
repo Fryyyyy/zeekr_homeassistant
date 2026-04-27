@@ -35,7 +35,7 @@ This is a custom integration for Zeekr Electric Vehicles for Home Assistant. It 
 ## Tips & Tricks
 
 - **Account**: Create a new account and share your car with the new account to avoid "The account is currently logged in elsewhere"
-- **Secrets**: Get the secrets by decompiling the Android app.
+- **Secrets**: Get the secrets by decompiling the Android app or by using the Zeekr Key Extractor tool here (https://github.com/Wysie/zeekr_key_extractor)
 - **Display**: Use vehicle-status-card for a good quality dashboard.
 
 ## Issues
