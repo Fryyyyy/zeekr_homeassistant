@@ -1,4 +1,11 @@
-from custom_components.zeekr_ev.sensor import ZeekrSensor
+from custom_components.zeekr_ev.sensor import (
+    ZeekrSensor,
+    ZeekrAPIStatusSensor,
+    ZeekrVehicleStatusSensor,
+    ZeekrEngineStatusSensor,
+    ZeekrChargerStateSensor,
+    ZeekrChargingTimeFormattedSensor,
+)
 
 
 class DummyCoordinator:
@@ -176,3 +183,205 @@ def test_window_sensors():
             "%",
         )
         assert s.native_value == pos
+
+
+def test_vehicle_status_sensor():
+    """Test ZeekrVehicleStatusSensor maps usageMode correctly."""
+    data = {
+        "VIN1": {
+            "basicVehicleStatus": {"usageMode": "4"}
+        }
+    }
+
+    class MockCoordinator:
+        def __init__(self, data):
+            self.data = data
+
+    coordinator = MockCoordinator(data)
+    sensor = ZeekrVehicleStatusSensor(coordinator, "VIN1")
+    assert sensor.native_value == "Ready to Go"
+
+
+def test_vehicle_status_sensor_unknown_value():
+    """Test ZeekrVehicleStatusSensor returns raw value for unknown status."""
+    data = {
+        "VIN1": {
+            "basicVehicleStatus": {"usageMode": "99"}
+        }
+    }
+
+    class MockCoordinator:
+        def __init__(self, data):
+            self.data = data
+
+    coordinator = MockCoordinator(data)
+    sensor = ZeekrVehicleStatusSensor(coordinator, "VIN1")
+    assert sensor.native_value == "99"
+
+
+def test_vehicle_status_sensor_no_data():
+    """Test ZeekrVehicleStatusSensor returns None when no data."""
+    class MockCoordinator:
+        def __init__(self, data):
+            self.data = data
+
+    coordinator = MockCoordinator({})
+    sensor = ZeekrVehicleStatusSensor(coordinator, "VIN1")
+    assert sensor.native_value is None
+
+
+def test_engine_status_sensor():
+    """Test ZeekrEngineStatusSensor maps engineStatus correctly."""
+    data = {
+        "VIN1": {
+            "basicVehicleStatus": {"engineStatus": "engine-running"}
+        }
+    }
+
+    class MockCoordinator:
+        def __init__(self, data):
+            self.data = data
+
+    coordinator = MockCoordinator(data)
+    sensor = ZeekrEngineStatusSensor(coordinator, "VIN1")
+    assert sensor.native_value == "Driving"
+
+
+def test_engine_status_sensor_unknown_value():
+    """Test ZeekrEngineStatusSensor returns raw value for unknown status."""
+    data = {
+        "VIN1": {
+            "basicVehicleStatus": {"engineStatus": "unknown-status"}
+        }
+    }
+
+    class MockCoordinator:
+        def __init__(self, data):
+            self.data = data
+
+    coordinator = MockCoordinator(data)
+    sensor = ZeekrEngineStatusSensor(coordinator, "VIN1")
+    assert sensor.native_value == "unknown-status"
+
+
+def test_charger_state_sensor():
+    """Test ZeekrChargerStateSensor returns raw charger state."""
+    data = {
+        "VIN1": {
+            "additionalVehicleStatus": {
+                "electricVehicleStatus": {"chargerState": "charging"}
+            }
+        }
+    }
+
+    class MockCoordinator:
+        def __init__(self, data):
+            self.data = data
+
+    coordinator = MockCoordinator(data)
+    sensor = ZeekrChargerStateSensor(coordinator, "VIN1")
+    assert sensor.state == "charging"
+    assert sensor.extra_state_attributes["raw_charger_state"] == "charging"
+
+
+def test_charging_time_formatted_sensor():
+    """Test ZeekrChargingTimeFormattedSensor formats time correctly."""
+    data = {
+        "VIN1": {
+            "additionalVehicleStatus": {
+                "electricVehicleStatus": {"timeToFullyCharged": 173}
+            }
+        }
+    }
+
+    class MockCoordinator:
+        def __init__(self, data):
+            self.data = data
+
+    coordinator = MockCoordinator(data)
+    sensor = ZeekrChargingTimeFormattedSensor(coordinator, "VIN1")
+    # 173 minutes = 2h 53m
+    assert sensor.native_value == "2h 53m"
+
+
+def test_charging_time_formatted_sensor_under_hour():
+    """Test ZeekrChargingTimeFormattedSensor formats under 1 hour correctly."""
+    data = {
+        "VIN1": {
+            "additionalVehicleStatus": {
+                "electricVehicleStatus": {"timeToFullyCharged": 45}
+            }
+        }
+    }
+
+    class MockCoordinator:
+        def __init__(self, data):
+            self.data = data
+
+    coordinator = MockCoordinator(data)
+    sensor = ZeekrChargingTimeFormattedSensor(coordinator, "VIN1")
+    assert sensor.native_value == "45m"
+
+
+def test_charging_time_formatted_sensor_not_charging():
+    """Test ZeekrChargingTimeFormattedSensor returns 'Not charging' for 2047."""
+    data = {
+        "VIN1": {
+            "additionalVehicleStatus": {
+                "electricVehicleStatus": {"timeToFullyCharged": 2047}
+            }
+        }
+    }
+
+    class MockCoordinator:
+        def __init__(self, data):
+            self.data = data
+
+    coordinator = MockCoordinator(data)
+    sensor = ZeekrChargingTimeFormattedSensor(coordinator, "VIN1")
+    assert sensor.native_value == "Not charging"
+
+
+def test_charging_time_formatted_sensor_no_data():
+    """Test ZeekrChargingTimeFormattedSensor returns None when no data."""
+    class MockCoordinator:
+        def __init__(self, data):
+            self.data = data
+
+    coordinator = MockCoordinator({})
+    sensor = ZeekrChargingTimeFormattedSensor(coordinator, "VIN1")
+    assert sensor.native_value is None
+
+
+def test_api_status_sensor_connected():
+    """Test ZeekrAPIStatusSensor returns Connected when logged in."""
+    class MockClient:
+        def __init__(self):
+            self.logged_in = True
+            self.auth_token = "test_auth"
+            self.bearer_token = "test_bearer"
+            self.username = "test@example.com"
+            self.region_code = "EU"
+            self.app_server_host = "api.zeekr.com"
+            self.usercenter_host = "user.zeekr.com"
+
+    class MockCoordinator:
+        def __init__(self):
+            self.client = MockClient()
+            self.vehicles = []
+
+    coordinator = MockCoordinator()
+    sensor = ZeekrAPIStatusSensor(coordinator, "entry_1")
+    assert sensor.native_value == "Connected"
+
+
+def test_api_status_sensor_disconnected():
+    """Test ZeekrAPIStatusSensor returns Disconnected when not logged in."""
+    class MockCoordinator:
+        def __init__(self):
+            self.client = None
+            self.vehicles = []
+
+    coordinator = MockCoordinator()
+    sensor = ZeekrAPIStatusSensor(coordinator, "entry_1")
+    assert sensor.native_value == "Disconnected"
