@@ -141,6 +141,18 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
                     }
                 ]
             }
+        elif self.field == "trunkLockStatus":
+            # Trunk locks automatically, but we can try sending a central lock command
+            command = "start"
+            service_id = "RDL"
+            setting = {
+                "serviceParameters": [
+                    {
+                        "key": "door",
+                        "value": "all"
+                    }
+                ]
+            }
 
         if command and service_id and setting:
             await self.coordinator.async_inc_invoke()
@@ -194,6 +206,17 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
                     }
                 ]
             }
+        elif self.field == "trunkLockStatus":
+            command = "stop"
+            service_id = "RDU"
+            setting = {
+                "serviceParameters": [
+                    {
+                        "key": "target",
+                        "value": "trunk"
+                    }
+                ]
+            }
 
         if command and service_id and setting:
             await self.coordinator.async_inc_invoke()
@@ -227,6 +250,9 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
         elif self.field == "chargeLidDcAcStatus":
             # Locked (Closed)="2", Unlocked (Open)="1"
             status[self.field] = "2" if locked else "1"
+        elif self.field == "trunkLockStatus":
+            # Locked="1", Unlocked="0"
+            status[self.field] = "1" if locked else "0"
 
     @property
     def device_info(self):

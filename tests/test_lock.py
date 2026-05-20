@@ -173,6 +173,53 @@ async def test_lock_optimistic_update_charge_lid():
 
 
 @pytest.mark.asyncio
+async def test_lock_optimistic_update_trunk_lock():
+    vin = "VIN1"
+    initial_data = {
+        vin: {
+            "additionalVehicleStatus": {
+                "drivingSafetyStatus": {
+                    "trunkLockStatus": "0"  # Unlocked
+                }
+            }
+        }
+    }
+
+    coordinator = MockCoordinator(initial_data)
+    coordinator.vehicles[vin] = MockVehicle(vin)
+    # mock do_remote_control to verify call arguments
+    coordinator.vehicles[vin].do_remote_control = MagicMock()
+
+    lock = ZeekrLock(coordinator, vin, "trunkLockStatus", "Trunk lock", "drivingSafetyStatus")
+    lock.hass = DummyHass()
+    lock.async_write_ha_state = MagicMock()
+
+    # Test Lock
+    await lock.async_lock()
+
+    # verify central locking was sent
+    coordinator.vehicles[vin].do_remote_control.assert_called_with(
+        "start", "RDL", {"serviceParameters": [{"key": "door", "value": "all"}]}
+    )
+
+    status = coordinator.data[vin]["additionalVehicleStatus"]["drivingSafetyStatus"]
+    assert status["trunkLockStatus"] == "1"
+    lock.async_write_ha_state.assert_called()
+
+    # Test Unlock
+    await lock.async_unlock()
+
+    # verify RDU stop was sent to trunk
+    coordinator.vehicles[vin].do_remote_control.assert_called_with(
+        "stop", "RDU", {"serviceParameters": [{"key": "target", "value": "trunk"}]}
+    )
+
+    status = coordinator.data[vin]["additionalVehicleStatus"]["drivingSafetyStatus"]
+    assert status["trunkLockStatus"] == "0"
+    lock.async_write_ha_state.assert_called()
+
+
+@pytest.mark.asyncio
 async def test_lock_no_vehicle(hass):
     coordinator = MockCoordinator({"VIN1": {}})
     lock = ZeekrLock(coordinator, "VIN1", "centralLockingStatus", "Label", "drivingSafetyStatus")
