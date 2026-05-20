@@ -18,6 +18,8 @@ from .coordinator import ZeekrCoordinator
 class ZeekrBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Zeekr Binary Sensor class."""
 
+    _attr_has_entity_name = True
+
     def __init__(
         self,
         coordinator: ZeekrCoordinator,
@@ -31,7 +33,7 @@ class ZeekrBinarySensor(CoordinatorEntity, BinarySensorEntity):
         super().__init__(coordinator)
         self.vin = vin
         self.key = key
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} {name}"
+        self._attr_name = name
         self._attr_unique_id = f"{vin}_{key}"
         self._value_fn = value_fn
         self._attr_device_class = device_class

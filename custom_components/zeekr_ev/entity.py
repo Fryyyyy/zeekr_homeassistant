@@ -15,6 +15,8 @@ _LOGGER = logging.getLogger(__name__)
 class ZeekrEntity(CoordinatorEntity[ZeekrCoordinator]):
     """Base entity for Zeekr."""
 
+    _attr_has_entity_name = True
+
     def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
         """Initialize."""
         super().__init__(coordinator)

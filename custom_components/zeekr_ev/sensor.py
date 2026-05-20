@@ -361,6 +361,8 @@ async def async_setup_entry(
 class ZeekrSensor(CoordinatorEntity, SensorEntity):
     """Zeekr Sensor class."""
 
+    _attr_has_entity_name = True
+
     def __init__(
         self,
         coordinator: ZeekrCoordinator,
@@ -376,7 +378,7 @@ class ZeekrSensor(CoordinatorEntity, SensorEntity):
         super().__init__(coordinator)
         self.vin = vin
         self.key = key
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} {name}"
+        self._attr_name = name
         self._attr_unique_id = f"{vin}_{key}"
         self._value_fn = value_fn
         self._attr_native_unit_of_measurement = unit
@@ -508,11 +510,13 @@ class ZeekrAPIStatSensor(CoordinatorEntity, SensorEntity):
 class ZeekrChargingTimeFormattedSensor(CoordinatorEntity, SensorEntity):
     """Sensor for formatted display of charging time remaining (e.g., 2h 53m)."""
 
+    _attr_has_entity_name = True
+
     def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.vin = vin
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Charging Time Remaining"
+        self._attr_name = "Charging Time Remaining"
         self._attr_unique_id = f"{vin}_charging_time_formatted"
         self._attr_icon = "mdi:timer-sand"
 
@@ -558,6 +562,8 @@ class ZeekrChargingTimeFormattedSensor(CoordinatorEntity, SensorEntity):
 class ZeekrVehicleStatusSensor(CoordinatorEntity, SensorEntity):
     """Sensor for vehicle usage mode / status."""
 
+    _attr_has_entity_name = True
+
     _STATUS_MAP = {
         "0": "Deep Sleep",
         "1": "Parked",
@@ -571,7 +577,7 @@ class ZeekrVehicleStatusSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.vin = vin
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Vehicle Status"
+        self._attr_name = "Vehicle Status"
         self._attr_unique_id = f"{vin}_vehicle_status"
         self._attr_icon = "mdi:car-connected"
 
@@ -599,6 +605,8 @@ class ZeekrVehicleStatusSensor(CoordinatorEntity, SensorEntity):
 class ZeekrEngineStatusSensor(CoordinatorEntity, SensorEntity):
     """Sensor for engine / drive status."""
 
+    _attr_has_entity_name = True
+
     _STATUS_MAP = {
         "engine-off": "Parked",
         "engine-running": "Driving",
@@ -610,7 +618,7 @@ class ZeekrEngineStatusSensor(CoordinatorEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator)
         self.vin = vin
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Engine Status"
+        self._attr_name = "Engine Status"
         self._attr_unique_id = f"{vin}_engine_status"
         self._attr_icon = "mdi:car"
 

@@ -59,6 +59,7 @@ async def async_setup_entry(
 class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
     """Zeekr Switch class."""
 
+    _attr_has_entity_name = True
     _attr_icon = "mdi:toggle-switch"
 
     def __init__(
@@ -76,7 +77,7 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
         self.field = field
         self.status_key = status_key or field
         self.status_group = status_group
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} {label}"
+        self._attr_name = label
         self._attr_unique_id = f"{vin}_{field}"
         if field == "charging":
             self._attr_icon = "mdi:battery-off"
@@ -359,7 +360,7 @@ class ZeekrChargingScheduleSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEnt
         """Initialize the charging schedule switch."""
         super().__init__(coordinator)
         self.vin = vin
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Charge Plan"
+        self._attr_name = "Charge Plan"
         self._attr_unique_id = f"{vin}_charging_schedule"
 
     @property
@@ -432,7 +433,7 @@ class ZeekrTravelPlanSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
         """Initialize the travel plan switch."""
         super().__init__(coordinator)
         self.vin = vin
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Travel Plan"
+        self._attr_name = "Travel Plan"
         self._attr_unique_id = f"{vin}_travel_plan"
 
     @property
@@ -506,7 +507,7 @@ class ZeekrDepartureACSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
         """Initialize the departure AC switch."""
         super().__init__(coordinator)
         self.vin = vin
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Departure AC"
+        self._attr_name = "Departure AC"
         self._attr_unique_id = f"{vin}_departure_ac"
 
     @property
