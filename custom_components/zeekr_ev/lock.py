@@ -132,7 +132,7 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
             # Close charge lid (Lock)
             # User: "stop is closed"
             command = "stop"
-            service_id = "RDO"
+            service_id = "RDC"
             setting = {
                 "serviceParameters": [
                     {
