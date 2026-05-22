@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 import homeassistant.helpers.event as event
 
 
-from .const import CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL, DOMAIN
+from .const import CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL, DOMAIN, COMMAND_POLL_DELAY
 from .request_stats import ZeekrRequestStats
 
 if TYPE_CHECKING:
@@ -54,9 +54,24 @@ class ZeekrCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(minutes=polling_interval),
         )
 
+        self._unsub_delayed_refresh = None
+
         # Schedule daily reset at midnight
         self._unsub_reset = None
         self._setup_daily_reset()
+
+    def async_request_delayed_refresh(self) -> None:
+        """Schedule a delayed refresh to deduplicate and allow car state to settle."""
+        if self._unsub_delayed_refresh is not None:
+            self._unsub_delayed_refresh()
+
+        async def _refresh_task(_now):
+            self._unsub_delayed_refresh = None
+            await self.async_request_refresh()
+
+        self._unsub_delayed_refresh = event.async_call_later(
+            self.hass, COMMAND_POLL_DELAY, _refresh_task
+        )
 
     def _setup_daily_reset(self):
         if self._unsub_reset:

@@ -14,9 +14,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import ZeekrCoordinator
 
-# Delay before polling after a remote command (seconds)
-COMMAND_POLL_DELAY = 15
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -152,10 +149,7 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
             self.async_write_ha_state()
 
             # Schedule a delayed refresh to get updated state after car processes command
-            async def delayed_refresh():
-                await asyncio.sleep(COMMAND_POLL_DELAY)
-                await self.coordinator.async_request_refresh()
-            self.hass.async_create_task(delayed_refresh())
+            self.coordinator.async_request_delayed_refresh()
 
     async def async_unlock(self, **kwargs: Any) -> None:
         """Unlock the car."""
@@ -205,10 +199,7 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
             self.async_write_ha_state()
 
             # Schedule a delayed refresh to get updated state after car processes command
-            async def delayed_refresh():
-                await asyncio.sleep(COMMAND_POLL_DELAY)
-                await self.coordinator.async_request_refresh()
-            self.hass.async_create_task(delayed_refresh())
+            self.coordinator.async_request_delayed_refresh()
 
     def _update_local_state_optimistically(self, locked: bool) -> None:
         """Update the coordinator data to reflect the change immediately."""

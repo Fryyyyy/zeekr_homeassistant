@@ -236,8 +236,7 @@ class ZeekrSeatSelect(CoordinatorEntity, SelectEntity):
         self._update_local_state_optimistically(level)
         self.async_write_ha_state()
 
-        # Trigger refresh (might revert if API is slow, but that's expected eventually)
-        await self.coordinator.async_request_refresh()
+        self.coordinator.async_request_delayed_refresh()
 
     def _update_local_state_optimistically(self, level: int):
         """Update the coordinator data to reflect the change immediately."""

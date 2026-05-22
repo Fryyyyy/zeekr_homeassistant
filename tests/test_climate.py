@@ -23,6 +23,9 @@ class MockCoordinator:
     def get_vehicle_by_vin(self, vin):
         return self.vehicles.get(vin)
 
+    def async_request_delayed_refresh(self):
+        pass
+
     async def async_request_refresh(self):
         pass
 
@@ -60,7 +63,7 @@ async def test_climate_optimistic_update():
     climate = ZeekrClimate(coordinator, vin)
     climate.hass = DummyHass()
     # Simple mock for async_create_task
-    climate.hass.async_create_task = MagicMock()
+    climate.coordinator.async_request_delayed_refresh = MagicMock()
     climate.async_write_ha_state = MagicMock()
 
     # Test Turn On
@@ -80,8 +83,7 @@ async def test_climate_optimistic_update():
     climate.async_write_ha_state.assert_called()
 
     # Verify Delayed Refresh Task Created
-    assert climate.hass.async_create_task.called
-    climate.hass.async_create_task.call_args[0][0].close()
+    assert climate.coordinator.async_request_delayed_refresh.called
 
     # Test Turn Off
     await climate.async_set_hvac_mode(HVACMode.OFF)
@@ -106,8 +108,7 @@ async def test_climate_optimistic_update():
     climate.async_write_ha_state.assert_called()
 
     # Verify Delayed Refresh Task Created again
-    assert climate.hass.async_create_task.call_count == 2
-    climate.hass.async_create_task.call_args[0][0].close()
+    assert climate.coordinator.async_request_delayed_refresh.call_count == 2
 
 
 @pytest.mark.asyncio

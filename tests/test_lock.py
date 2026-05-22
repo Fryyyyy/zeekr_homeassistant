@@ -24,6 +24,9 @@ class MockCoordinator:
     def inc_invoke(self):
         pass
 
+    def async_request_delayed_refresh(self):
+        pass
+
     async def async_request_refresh(self):
         pass
 

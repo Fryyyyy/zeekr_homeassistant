@@ -110,7 +110,7 @@ class ZeekrSunshade(CoordinatorEntity, CoverEntity):
         )
         self._update_local_state_optimistically(is_open=True)
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        self.coordinator.async_request_delayed_refresh()
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close cover."""
@@ -135,7 +135,7 @@ class ZeekrSunshade(CoordinatorEntity, CoverEntity):
         )
         self._update_local_state_optimistically(is_open=False)
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        self.coordinator.async_request_delayed_refresh()
 
     def _update_local_state_optimistically(self, is_open: bool) -> None:
         """Update the coordinator data to reflect the change immediately."""
@@ -245,7 +245,7 @@ class ZeekrWindows(CoordinatorEntity, CoverEntity):
         )
         self._update_local_state_optimistically(is_open=True)
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        self.coordinator.async_request_delayed_refresh()
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close all windows."""
@@ -270,7 +270,7 @@ class ZeekrWindows(CoordinatorEntity, CoverEntity):
         )
         self._update_local_state_optimistically(is_open=False)
         self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        self.coordinator.async_request_delayed_refresh()
 
     def _update_local_state_optimistically(self, is_open: bool) -> None:
         """Update the coordinator data to reflect the change immediately."""

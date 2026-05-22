@@ -224,19 +224,11 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 else:
                     self._update_local_state_optimistically(is_on=False)
                 self.async_write_ha_state()
-            elif self.field == "sentry_mode":
-                self._update_local_state_optimistically(is_on=True)
-                self.async_write_ha_state()
-
-                async def delayed_refresh():
-                    await asyncio.sleep(10)
-                    await self.coordinator.async_request_refresh()
-
-                self.hass.async_create_task(delayed_refresh())
             else:
                 self._update_local_state_optimistically(is_on=True)
                 self.async_write_ha_state()
-                await self.coordinator.async_request_refresh()
+
+            self.coordinator.async_request_delayed_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
@@ -302,14 +294,7 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
             )
             self._update_local_state_optimistically(is_on=False)
             self.async_write_ha_state()
-            if self.field == "sentry_mode":
-                async def delayed_refresh():
-                    await asyncio.sleep(10)
-                    await self.coordinator.async_request_refresh()
-
-                self.hass.async_create_task(delayed_refresh())
-            else:
-                await self.coordinator.async_request_refresh()
+            self.coordinator.async_request_delayed_refresh()
 
     def _update_local_state_optimistically(self, is_on: bool) -> None:
         """Update the coordinator data to reflect the change immediately."""
