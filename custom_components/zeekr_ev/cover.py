@@ -41,6 +41,7 @@ async def async_setup_entry(
 class ZeekrSunshade(CoordinatorEntity, CoverEntity):
     """Zeekr Sunshade class."""
 
+    _attr_has_entity_name = True
     _attr_device_class = CoverDeviceClass.BLIND
     _attr_supported_features = CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE
 
@@ -48,7 +49,7 @@ class ZeekrSunshade(CoordinatorEntity, CoverEntity):
         """Initialize the cover entity."""
         super().__init__(coordinator)
         self.vin = vin
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Sunshade"
+        self._attr_name = "Sunshade"
         self._attr_unique_id = f"{vin}_sunshade"
 
     @property
@@ -167,6 +168,7 @@ class ZeekrSunshade(CoordinatorEntity, CoverEntity):
 class ZeekrWindows(CoordinatorEntity, CoverEntity):
     """Zeekr Windows class (controls all windows)."""
 
+    _attr_has_entity_name = True
     _attr_device_class = CoverDeviceClass.WINDOW
     _attr_supported_features = CoverEntityFeature.OPEN | CoverEntityFeature.CLOSE
 
@@ -174,7 +176,7 @@ class ZeekrWindows(CoordinatorEntity, CoverEntity):
         """Initialize the cover entity."""
         super().__init__(coordinator)
         self.vin = vin
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} All Windows"
+        self._attr_name = "All Windows"
         self._attr_unique_id = f"{vin}_all_windows"
 
     @property
@@ -302,6 +304,7 @@ class ZeekrWindows(CoordinatorEntity, CoverEntity):
 class ZeekrWindow(CoordinatorEntity, CoverEntity):
     """Zeekr Window (Read-Only) class."""
 
+    _attr_has_entity_name = True
     _attr_device_class = CoverDeviceClass.WINDOW
     _attr_supported_features = CoverEntityFeature(0)
 
@@ -310,7 +313,7 @@ class ZeekrWindow(CoordinatorEntity, CoverEntity):
         super().__init__(coordinator)
         self.vin = vin
         self.win_key = win_key
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} {win_name}"
+        self._attr_name = win_name
         self._attr_unique_id = f"{vin}_window_{win_key.lower()}"
 
     @property

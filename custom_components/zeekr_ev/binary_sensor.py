@@ -11,12 +11,14 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, CONF_DRIVE_SIDE, DRIVE_SIDE_LHD
 from .coordinator import ZeekrCoordinator
 
 
 class ZeekrBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Zeekr Binary Sensor class."""
+
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -31,7 +33,7 @@ class ZeekrBinarySensor(CoordinatorEntity, BinarySensorEntity):
         super().__init__(coordinator)
         self.vin = vin
         self.key = key
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} {name}"
+        self._attr_name = name
         self._attr_unique_id = f"{vin}_{key}"
         self._value_fn = value_fn
         self._attr_device_class = device_class
@@ -133,14 +135,17 @@ async def async_setup_entry(
             )
 
         # Tire Pre-Warning & Temp Warning
+        from .sensor import get_tire_position_label
+        drive_side = entry.data.get(CONF_DRIVE_SIDE, DRIVE_SIDE_LHD)
         for tire in ["Driver", "Passenger", "DriverRear", "PassengerRear"]:
+            display_label = get_tire_position_label(tire, drive_side)
             # Pre-Warning
             entities.append(
                 ZeekrBinarySensor(
                     coordinator,
                     vin,
                     f"tire_pre_warning_{tire.lower()}",
-                    f"Tire Pre-Warning {tire}",
+                    f"Tire Pre-Warning {display_label}",
                     lambda d, t=tire: (
                         None
                         if (
@@ -160,7 +165,7 @@ async def async_setup_entry(
                     coordinator,
                     vin,
                     f"tire_temp_warning_{tire.lower()}",
-                    f"Tire Temp Warning {tire}",
+                    f"Tire Temp Warning {display_label}",
                     lambda d, t=tire: (
                         None
                         if (

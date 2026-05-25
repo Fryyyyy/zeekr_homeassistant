@@ -31,11 +31,13 @@ async def async_setup_entry(
 class ZeekrDeviceTracker(CoordinatorEntity, TrackerEntity):
     """Zeekr Device Tracker."""
 
+    _attr_has_entity_name = True
+
     def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
         """Initialize the tracker."""
         super().__init__(coordinator)
         self.vin = vin
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Location"
+        self._attr_name = "Location"
         self._attr_unique_id = f"{vin}_location"
 
     @property
