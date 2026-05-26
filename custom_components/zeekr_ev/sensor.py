@@ -28,6 +28,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, CONF_DRIVE_SIDE, DRIVE_SIDE_LHD, DRIVE_SIDE_RHD
 from .coordinator import ZeekrCoordinator
+from .utils import get_api_version
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -426,6 +427,7 @@ class ZeekrAPIStatusSensor(CoordinatorEntity, SensorEntity):
             "name": "Zeekr API",
             "manufacturer": "Zeekr",
             "model": "API Integration",
+            "sw_version": get_api_version(self.coordinator.client),
         }
 
     @property
@@ -504,6 +506,7 @@ class ZeekrAPIStatSensor(CoordinatorEntity, SensorEntity):
             "name": "Zeekr API",
             "manufacturer": "Zeekr",
             "model": "API Integration",
+            "sw_version": get_api_version(self.coordinator.client),
         }
 
 
