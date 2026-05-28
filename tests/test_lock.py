@@ -27,6 +27,10 @@ class MockCoordinator:
     def async_request_delayed_refresh(self):
         pass
 
+    async def async_execute_command_with_retries(self, command, check):
+        await command()
+        pass
+
     async def async_request_refresh(self):
         pass
 

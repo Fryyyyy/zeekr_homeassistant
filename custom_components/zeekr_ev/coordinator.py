@@ -221,3 +221,46 @@ class ZeekrCoordinator(DataUpdateCoordinator):
 
     async def async_inc_invoke(self):
         await self.request_stats.async_inc_invoke()
+
+    async def async_execute_command_with_retries(
+        self,
+        command_func,
+        check_func,
+        retries: int = 3,
+        delay: int = COMMAND_POLL_DELAY
+    ) -> None:
+        """Execute a command, and retry if the state does not match the expected state.
+
+        Args:
+            command_func: An async function that executes the command (e.g. sends API request and updates local state optimistically).
+            check_func: A synchronous function that checks the current state and returns True if success, False otherwise.
+            retries: Number of retry attempts after the initial execution.
+            delay: Delay in seconds between checking the state.
+        """
+        # Initial execution
+        await command_func()
+
+        async def _retry_task():
+            try:
+                for attempt in range(retries):
+                    await asyncio.sleep(delay)
+
+                    # Fetch fresh data
+                    await self.async_request_refresh()
+
+                    # Check if successful
+                    if check_func():
+                        _LOGGER.debug("Command succeeded on attempt %d", attempt + 1)
+                        return
+
+                    _LOGGER.info("Command failed to reflect in state on attempt %d, retrying...", attempt + 1)
+
+                    # If we haven't reached the max retries, fire the command again
+                    if attempt < retries - 1:
+                        await command_func()
+
+                _LOGGER.warning("Command failed to reflect in state after %d attempts", retries)
+            except Exception as e:
+                _LOGGER.error("Error during command retry loop: %s", e)
+
+        self.hass.async_create_task(_retry_task())
