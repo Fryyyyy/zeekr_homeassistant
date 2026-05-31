@@ -104,13 +104,19 @@ class ZeekrSunshade(CoordinatorEntity, CoverEntity):
             ]
         }
 
-        await self.coordinator.async_inc_invoke()
-        await self.hass.async_add_executor_job(
-            vehicle.do_remote_control, command, service_id, setting
-        )
-        self._update_local_state_optimistically(is_open=True)
-        self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        async def _command():
+            await self.coordinator.async_inc_invoke()
+            await self.hass.async_add_executor_job(
+                vehicle.do_remote_control, command, service_id, setting
+            )
+            self._update_local_state_optimistically(is_open=True)
+            self.async_write_ha_state()
+            self.coordinator.async_request_delayed_refresh()
+
+        def _check():
+            return self.is_closed is False
+
+        await self.coordinator.async_execute_command_with_retries(_command, _check)
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close cover."""
@@ -129,13 +135,19 @@ class ZeekrSunshade(CoordinatorEntity, CoverEntity):
             ]
         }
 
-        await self.coordinator.async_inc_invoke()
-        await self.hass.async_add_executor_job(
-            vehicle.do_remote_control, command, service_id, setting
-        )
-        self._update_local_state_optimistically(is_open=False)
-        self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        async def _command():
+            await self.coordinator.async_inc_invoke()
+            await self.hass.async_add_executor_job(
+                vehicle.do_remote_control, command, service_id, setting
+            )
+            self._update_local_state_optimistically(is_open=False)
+            self.async_write_ha_state()
+            self.coordinator.async_request_delayed_refresh()
+
+        def _check():
+            return self.is_closed is True
+
+        await self.coordinator.async_execute_command_with_retries(_command, _check)
 
     def _update_local_state_optimistically(self, is_open: bool) -> None:
         """Update the coordinator data to reflect the change immediately."""
@@ -239,13 +251,19 @@ class ZeekrWindows(CoordinatorEntity, CoverEntity):
             ]
         }
 
-        await self.coordinator.async_inc_invoke()
-        await self.hass.async_add_executor_job(
-            vehicle.do_remote_control, command, service_id, setting
-        )
-        self._update_local_state_optimistically(is_open=True)
-        self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        async def _command():
+            await self.coordinator.async_inc_invoke()
+            await self.hass.async_add_executor_job(
+                vehicle.do_remote_control, command, service_id, setting
+            )
+            self._update_local_state_optimistically(is_open=True)
+            self.async_write_ha_state()
+            self.coordinator.async_request_delayed_refresh()
+
+        def _check():
+            return self.is_closed is False
+
+        await self.coordinator.async_execute_command_with_retries(_command, _check)
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close all windows."""
@@ -264,13 +282,19 @@ class ZeekrWindows(CoordinatorEntity, CoverEntity):
             ]
         }
 
-        await self.coordinator.async_inc_invoke()
-        await self.hass.async_add_executor_job(
-            vehicle.do_remote_control, command, service_id, setting
-        )
-        self._update_local_state_optimistically(is_open=False)
-        self.async_write_ha_state()
-        await self.coordinator.async_request_refresh()
+        async def _command():
+            await self.coordinator.async_inc_invoke()
+            await self.hass.async_add_executor_job(
+                vehicle.do_remote_control, command, service_id, setting
+            )
+            self._update_local_state_optimistically(is_open=False)
+            self.async_write_ha_state()
+            self.coordinator.async_request_delayed_refresh()
+
+        def _check():
+            return self.is_closed is True
+
+        await self.coordinator.async_execute_command_with_retries(_command, _check)
 
     def _update_local_state_optimistically(self, is_open: bool) -> None:
         """Update the coordinator data to reflect the change immediately."""

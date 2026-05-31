@@ -191,12 +191,11 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
             return
 
         if setting:
-            await self.coordinator.async_inc_invoke()
-            await self.hass.async_add_executor_job(
-                vehicle.do_remote_control, command, service_id, setting
-            )
-
             if self.field == "charging":
+                await self.coordinator.async_inc_invoke()
+                await self.hass.async_add_executor_job(
+                    vehicle.do_remote_control, command, service_id, setting
+                )
                 # Wait for backend confirmation for charging
                 timeout = 30  # seconds
                 poll_interval = 2
@@ -224,19 +223,22 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                 else:
                     self._update_local_state_optimistically(is_on=False)
                 self.async_write_ha_state()
-            elif self.field == "sentry_mode":
-                self._update_local_state_optimistically(is_on=True)
-                self.async_write_ha_state()
-
-                async def delayed_refresh():
-                    await asyncio.sleep(10)
-                    await self.coordinator.async_request_refresh()
-
-                self.hass.async_create_task(delayed_refresh())
+                self.coordinator.async_request_delayed_refresh()
             else:
-                self._update_local_state_optimistically(is_on=True)
-                self.async_write_ha_state()
-                await self.coordinator.async_request_refresh()
+                async def _command():
+                    await self.coordinator.async_inc_invoke()
+                    await self.hass.async_add_executor_job(
+                        vehicle.do_remote_control, command, service_id, setting
+                    )
+                    self._update_local_state_optimistically(is_on=True)
+                    self.async_write_ha_state()
+                    self.coordinator.async_request_delayed_refresh()
+
+                def _check():
+                    return self.is_on is True
+
+                await self.coordinator.async_execute_command_with_retries(_command, _check)
+
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
@@ -398,20 +400,28 @@ class ZeekrChargingScheduleSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEnt
         bc_cycle = current_plan.get("bcCycleActive", False)
         bc_temp = current_plan.get("bcTempActive", False)
 
-        await self.coordinator.async_inc_invoke()
-        await self.hass.async_add_executor_job(
-            vehicle.set_charge_plan,
-            start_time,
-            end_time,
-            command,
-            bc_cycle,
-            bc_temp,
-        )
+        async def _command():
+            await self.coordinator.async_inc_invoke()
+            await self.hass.async_add_executor_job(
+                vehicle.set_charge_plan,
+                start_time,
+                end_time,
+                command,
+                bc_cycle,
+                bc_temp,
+            )
 
-        # Optimistic update
-        plan_data = self.coordinator.data.setdefault(self.vin, {}).setdefault("chargePlan", {})
-        plan_data["command"] = command
-        self.async_write_ha_state()
+            # Optimistic update
+            plan_data = self.coordinator.data.setdefault(self.vin, {}).setdefault("chargePlan", {})
+            plan_data["command"] = command
+            self.async_write_ha_state()
+            self.coordinator.async_request_delayed_refresh()
+
+        def _check():
+            expected = True if command == "start" else False
+            return self.is_on == expected
+
+        await self.coordinator.async_execute_command_with_retries(_command, _check)
 
     @property
     def device_info(self):
@@ -472,20 +482,28 @@ class ZeekrTravelPlanSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
         bw = current_plan.get("bw", "0")
         steering_wheel_heating = bw not in ("0", "", None)
 
-        await self.coordinator.async_inc_invoke()
-        await self.hass.async_add_executor_job(
-            vehicle.set_travel_plan,
-            command,
-            "",  # start_time
-            scheduled_time,
-            ac_preconditioning,
-            steering_wheel_heating,
-        )
+        async def _command():
+            await self.coordinator.async_inc_invoke()
+            await self.hass.async_add_executor_job(
+                vehicle.set_travel_plan,
+                command,
+                "",  # start_time
+                scheduled_time,
+                ac_preconditioning,
+                steering_wheel_heating,
+            )
 
-        # Optimistic update
-        plan_data = self.coordinator.data.setdefault(self.vin, {}).setdefault("travelPlan", {})
-        plan_data["command"] = command
-        self.async_write_ha_state()
+            # Optimistic update
+            plan_data = self.coordinator.data.setdefault(self.vin, {}).setdefault("travelPlan", {})
+            plan_data["command"] = command
+            self.async_write_ha_state()
+            self.coordinator.async_request_delayed_refresh()
+
+        def _check():
+            expected = True if command == "start" else False
+            return self.is_on == expected
+
+        await self.coordinator.async_execute_command_with_retries(_command, _check)
 
     @property
     def device_info(self):
@@ -545,20 +563,27 @@ class ZeekrDepartureACSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
         bw = current_plan.get("bw", "0")
         steering_wheel_heating = bw not in ("0", "", None)
 
-        await self.coordinator.async_inc_invoke()
-        await self.hass.async_add_executor_job(
-            vehicle.set_travel_plan,
-            command,
-            "",  # start_time
-            scheduled_time,
-            ac_on,
-            steering_wheel_heating,
-        )
+        async def _command():
+            await self.coordinator.async_inc_invoke()
+            await self.hass.async_add_executor_job(
+                vehicle.set_travel_plan,
+                command,
+                "",  # start_time
+                scheduled_time,
+                ac_on,
+                steering_wheel_heating,
+            )
 
-        # Optimistic update
-        plan_data = self.coordinator.data.setdefault(self.vin, {}).setdefault("travelPlan", {})
-        plan_data["ac"] = "true" if ac_on else "false"
-        self.async_write_ha_state()
+            # Optimistic update
+            plan_data = self.coordinator.data.setdefault(self.vin, {}).setdefault("travelPlan", {})
+            plan_data["ac"] = "true" if ac_on else "false"
+            self.async_write_ha_state()
+            self.coordinator.async_request_delayed_refresh()
+
+        def _check():
+            return self.is_on == ac_on
+
+        await self.coordinator.async_execute_command_with_retries(_command, _check)
 
     @property
     def device_info(self):

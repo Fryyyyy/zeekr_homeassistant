@@ -14,9 +14,6 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import ZeekrCoordinator
 
-# Delay before polling after a remote command (seconds)
-COMMAND_POLL_DELAY = 15
-
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -155,19 +152,23 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
             }
 
         if command and service_id and setting:
-            await self.coordinator.async_inc_invoke()
-            await self.hass.async_add_executor_job(
-                vehicle.do_remote_control, command, service_id, setting
-            )
+            async def _command():
+                await self.coordinator.async_inc_invoke()
+                await self.hass.async_add_executor_job(
+                    vehicle.do_remote_control, command, service_id, setting
+                )
 
-            self._update_local_state_optimistically(locked=True)
-            self.async_write_ha_state()
+                self._update_local_state_optimistically(locked=True)
+                self.async_write_ha_state()
 
-            # Schedule a delayed refresh to get updated state after car processes command
-            async def delayed_refresh():
-                await asyncio.sleep(COMMAND_POLL_DELAY)
-                await self.coordinator.async_request_refresh()
-            self.hass.async_create_task(delayed_refresh())
+                # Schedule a delayed refresh to get updated state after car processes command
+                self.coordinator.async_request_delayed_refresh()
+
+            def _check():
+                return self.is_locked is True
+
+            await self.coordinator.async_execute_command_with_retries(_command, _check)
+
 
     async def async_unlock(self, **kwargs: Any) -> None:
         """Unlock the car."""
@@ -219,19 +220,22 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
             }
 
         if command and service_id and setting:
-            await self.coordinator.async_inc_invoke()
-            await self.hass.async_add_executor_job(
-                vehicle.do_remote_control, command, service_id, setting
-            )
+            async def _command():
+                await self.coordinator.async_inc_invoke()
+                await self.hass.async_add_executor_job(
+                    vehicle.do_remote_control, command, service_id, setting
+                )
 
-            self._update_local_state_optimistically(locked=False)
-            self.async_write_ha_state()
+                self._update_local_state_optimistically(locked=False)
+                self.async_write_ha_state()
 
-            # Schedule a delayed refresh to get updated state after car processes command
-            async def delayed_refresh():
-                await asyncio.sleep(COMMAND_POLL_DELAY)
-                await self.coordinator.async_request_refresh()
-            self.hass.async_create_task(delayed_refresh())
+                # Schedule a delayed refresh to get updated state after car processes command
+                self.coordinator.async_request_delayed_refresh()
+
+            def _check():
+                return self.is_locked is False
+
+            await self.coordinator.async_execute_command_with_retries(_command, _check)
 
     def _update_local_state_optimistically(self, locked: bool) -> None:
         """Update the coordinator data to reflect the change immediately."""

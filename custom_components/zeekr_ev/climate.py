@@ -129,20 +129,21 @@ class ZeekrClimate(CoordinatorEntity, ClimateEntity):
             }
 
         if setting:
-            await self.coordinator.async_inc_invoke()
-            await self.hass.async_add_executor_job(
-                vehicle.do_remote_control, command, service_id, setting
-            )
+            async def _command():
+                await self.coordinator.async_inc_invoke()
+                await self.hass.async_add_executor_job(
+                    vehicle.do_remote_control, command, service_id, setting
+                )
 
-            # Optimistic update
-            self._update_local_state_optimistically(hvac_mode)
-            self.async_write_ha_state()
+                # Optimistic update
+                self._update_local_state_optimistically(hvac_mode)
+                self.async_write_ha_state()
+                self.coordinator.async_request_delayed_refresh()
 
-            # delayed refresh
-            async def delayed_refresh():
-                await asyncio.sleep(10)
-                await self.coordinator.async_request_refresh()
-            self.hass.async_create_task(delayed_refresh())
+            def _check():
+                return self.hvac_mode == hvac_mode
+
+            await self.coordinator.async_execute_command_with_retries(_command, _check)
 
     def _update_local_state_optimistically(self, hvac_mode: HVACMode) -> None:
         """Update the coordinator data to reflect the change immediately."""

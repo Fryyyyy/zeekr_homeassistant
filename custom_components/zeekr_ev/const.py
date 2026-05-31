@@ -50,6 +50,7 @@ DRIVE_SIDE_RHD = "rhd"
 # Defaults
 DEFAULT_NAME = DOMAIN
 DEFAULT_POLLING_INTERVAL = 5  # minutes
+COMMAND_POLL_DELAY = 10  # seconds
 
 # Country code to (country_name, region) mapping
 COUNTRY_CODE_MAPPING = {

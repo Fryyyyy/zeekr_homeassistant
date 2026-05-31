@@ -227,17 +227,22 @@ class ZeekrSeatSelect(CoordinatorEntity, SelectEntity):
 
         setting["serviceParameters"] = params
 
-        await self.coordinator.async_inc_invoke()
-        await self.hass.async_add_executor_job(
-            vehicle.do_remote_control, command, service_id, setting
-        )
+        async def _command():
+            await self.coordinator.async_inc_invoke()
+            await self.hass.async_add_executor_job(
+                vehicle.do_remote_control, command, service_id, setting
+            )
 
-        # Optimistic update
-        self._update_local_state_optimistically(level)
-        self.async_write_ha_state()
+            # Optimistic update
+            self._update_local_state_optimistically(level)
+            self.async_write_ha_state()
+            self.coordinator.async_request_delayed_refresh()
 
-        # Trigger refresh (might revert if API is slow, but that's expected eventually)
-        await self.coordinator.async_request_refresh()
+        def _check():
+            return self.current_option == option
+
+        await self.coordinator.async_execute_command_with_retries(_command, _check)
+
 
     def _update_local_state_optimistically(self, level: int):
         """Update the coordinator data to reflect the change immediately."""
