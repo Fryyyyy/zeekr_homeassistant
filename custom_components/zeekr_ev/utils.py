@@ -1,6 +1,7 @@
 import importlib
 import logging
 import re
+from importlib import metadata
 from typing import Dict, Any, Optional
 
 from .const import (
@@ -13,6 +14,34 @@ from .const import (
 )
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def get_api_version(client: object) -> str | None:
+    """Return the zeekr_ev_api version in use for this coordinator client."""
+    module_name = getattr(client.__class__, "__module__", "")
+
+    if module_name.startswith("custom_components.zeekr_ev_api"):
+        try:
+            local_module = importlib.import_module("custom_components.zeekr_ev_api")
+        except ImportError:
+            return "local"
+        local_version = getattr(local_module, "__version__", None)
+        return f"{local_version} (local)" if local_version else "local"
+
+    try:
+        return metadata.version("zeekr_ev_api")
+    except metadata.PackageNotFoundError:
+        pass
+
+    root_module_name = module_name.rsplit(".", 1)[0] if "." in module_name else module_name
+    if root_module_name:
+        try:
+            root_module = importlib.import_module(root_module_name)
+        except ImportError:
+            return None
+        return getattr(root_module, "__version__", None)
+
+    return None
 
 
 def get_zeekr_client_class(use_local: bool = False):

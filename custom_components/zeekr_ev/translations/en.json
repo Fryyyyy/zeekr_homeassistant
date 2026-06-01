@@ -44,10 +44,20 @@
   "options": {
     "step": {
       "user": {
+        "title": "Reconfigure Zeekr Account",
+        "description": "Update your Zeekr credentials and integration settings.",
         "data": {
-          "binary_sensor": "Binary sensor enabled",
-          "sensor": "Sensor enabled",
-          "switch": "Switch enabled",
+          "username": "Username",
+          "password": "Password",
+          "country_code": "Country code",
+          "polling_interval": "Polling interval (minutes)",
+          "hmac_access_key": "HMAC access key",
+          "hmac_secret_key": "HMAC secret key",
+          "password_public_key": "Password public key",
+          "prod_secret": "Prod secret",
+          "vin_key": "VIN key",
+          "vin_iv": "VIN IV",
+          "drive_side": "Drive side",
           "use_local_api": "Use local API (custom_components/zeekr_ev_api)"
         },
         "data_description": {
@@ -69,6 +79,9 @@
       "invalid_length_exact_16_vin_key": "VIN key must be exactly 16 characters.",
       "invalid_base64_vin_iv": "VIN IV must be base64 encoded.",
       "invalid_length_exact_16_vin_iv": "VIN IV must be exactly 16 characters."
+    },
+    "abort": {
+      "reconfigure_successful": "Reconfiguration successful."
     }
   }
 }

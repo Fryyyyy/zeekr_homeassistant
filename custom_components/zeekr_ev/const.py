@@ -1,10 +1,29 @@
 """Constants for Zeekr EV API Integration."""
 
+import json
+from pathlib import Path
+
 # Base component constants
 NAME = "Zeekr EV API Integration"
 DOMAIN = "zeekr_ev"
 DOMAIN_DATA = f"{DOMAIN}_data"
-VERSION = "1.0.0"
+
+
+def _load_manifest_version() -> str:
+    """Load integration version from manifest.json.
+
+    This keeps startup logging and UI version aligned with the integration metadata.
+    """
+    manifest_path = Path(__file__).with_name("manifest.json")
+    try:
+        with manifest_path.open(encoding="utf-8") as manifest_file:
+            manifest = json.load(manifest_file)
+    except (OSError, ValueError):
+        return "unknown"
+    return str(manifest.get("version", "unknown"))
+
+
+INTEGRATION_VERSION = _load_manifest_version()
 
 ISSUE_URL = "https://github.com/Fryyyyy/zeekr_homeassistant/issues"
 
@@ -135,7 +154,7 @@ COUNTRY_CODE_MAPPING = {
 STARTUP_MESSAGE = f"""
 -------------------------------------------------------------------
 {NAME}
-Version: {VERSION}
+Version: {INTEGRATION_VERSION}
 This is a custom integration!
 If you have any issues with this you need to open an issue here:
 {ISSUE_URL}

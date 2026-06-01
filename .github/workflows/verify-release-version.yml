@@ -1,0 +1,47 @@
+name: Verify release tag matches manifest version
+
+on:
+  release:
+    types:
+      - published
+      - edited
+  push:
+    tags:
+      - "*"
+
+jobs:
+  verify-version-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Verify tag and manifest version match
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG_NAME="${GITHUB_REF_NAME:-}"
+          if [ -z "$TAG_NAME" ] && [ "${{ github.event_name }}" = "release" ]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+          fi
+
+          if [ -z "$TAG_NAME" ]; then
+            echo "Unable to determine tag name from GitHub context"
+            exit 1
+          fi
+
+          EXPECTED_VERSION="${TAG_NAME#v}"
+
+          MANIFEST_VERSION=$(python -c "import json; print(json.load(open('custom_components/zeekr_ev/manifest.json', encoding='utf-8'))['version'])")
+
+          echo "Tag: $TAG_NAME"
+          echo "Expected manifest version: $EXPECTED_VERSION"
+          echo "Actual manifest version: $MANIFEST_VERSION"
+
+          if [ "$MANIFEST_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "Release tag and manifest version are out of sync."
+            echo "Update custom_components/zeekr_ev/manifest.json version to $EXPECTED_VERSION before releasing,"
+            echo "or publish a tag that matches the manifest version."
+            exit 1
+          fi
