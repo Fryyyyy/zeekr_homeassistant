@@ -11,6 +11,8 @@ This is a custom integration for Zeekr Electric Vehicles for Home Assistant. It 
 - **Locks**: Door and Trunk Lock.
 - **Device Tracker**: Location tracking.
 
+> 📖 **Full entity reference:** see [ENTITIES.md](ENTITIES.md) — what every entity does, how it behaves in Home Assistant, and the known issues to watch for.
+
 ## Installation
 
 ### HACS
