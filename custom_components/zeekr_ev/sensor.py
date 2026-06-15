@@ -439,15 +439,10 @@ class ZeekrAPIStatusSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return the state attributes including tokens only."""
+        """Return non-sensitive API status attributes (tokens redacted)."""
         attrs = {}
         client = self.coordinator.client
         if client:
-            attrs["auth_token"] = client.auth_token
-            attrs["bearer_token"] = client.bearer_token
-            attrs["access_token"] = (
-                client.bearer_token
-            )  # Same as bearer_token, for clarity
             attrs["logged_in"] = client.logged_in
             attrs["username"] = getattr(client, "username", None)
             attrs["region_code"] = getattr(client, "region_code", None)
