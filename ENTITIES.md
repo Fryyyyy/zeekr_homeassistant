@@ -26,7 +26,7 @@ A recurring quirk worth knowing up front: **most writable entities are optimisti
 | **Defroster** | Turns the windscreen defroster on/off. | Optimistic. Climate-related. | Can revert ~10s after toggling. |
 | **Charging** | Starts/stops charging on demand (separate from any schedule). | Unlike most switches, this one waits up to ~30s for the car to confirm before settling its state — so it's more reliable than a typical optimistic toggle. | — |
 | **Steering Wheel Heat** | Turns the heated steering wheel on/off. | Run time comes from the *Steering Wheel Heat Operation Duration* number. | Can revert ~10s after toggling. |
-| **Sentry Mode** | Single on/off toggle for the car's guard/sentry mode. | Arms when the car is locked. State settles after a short delay rather than instantly. | See [Sentry Mode notes](#sentry-mode). |
+| **Sentry Mode** | Single on/off toggle for the car's guard/sentry mode. | Arms when the car is locked. State settles after a short delay rather than instantly. | — |
 | **Charge Plan** | Enables/disables the scheduled-charging window. | Part of the **charge-schedule trio** (with Charge Start/End Time). Toggling it reuses the currently-set start/end times. | — |
 | **Travel Plan** | Master on/off for the departure (pre-conditioning) plan. | Part of the **departure-plan trio** (with Departure AC and Departure Time). Treat this as the master switch when building automations. | Can revert ~10s after toggling. |
 | **Departure AC** | Turns the AC pre-conditioning part of the departure plan on/off. | **Not** a standalone climate toggle — it's one setting *inside* the departure plan. Set it together with Travel Plan and Departure Time. | Easy to mis-model as standalone; see [Relationships](#relationships). |
@@ -81,7 +81,7 @@ A recurring quirk worth knowing up front: **most writable entities are optimisti
 | **Plugged In** | On while a charge cable is connected (independent of whether charging is active). | — | Can read `unknown` if the car isn't reporting plug state. |
 | **Doors Open ×4** (per door) | On when that door is open. | — | — |
 | **Trunk Open / Hood Open** | On when the trunk / bonnet is open. | — | — |
-| **Tyre Pre-Warning ×4** | Problem indicator per tyre. | Tyre positions follow the car's drive side. | — |
+| **Tyre Pre-Warning ×4** | Problem indicator per tyre. | Positions are labelled driver/passenger; which physical side that is follows the `drive_side` config option. | — |
 | **Tyre Temperature Warning ×4** | Problem indicator per tyre. | — | — |
 
 ---
@@ -92,15 +92,15 @@ A recurring quirk worth knowing up front: **most writable entities are optimisti
 |---|---|---|---|
 | **Battery Level** | Battery state of charge, %. | — | — |
 | **Range** | Estimated remaining range, km. | — | — |
-| **Range at 20% SoC / Range at 100% SoC** | Projected range at those charge levels. | — | **The two are swapped** (known upstream bug). |
+| **Range at 20% SoC / Range at 100% SoC** | Projected range at those charge levels. | — | **The two appear swapped** — the "100%" sensor reads lower than the "20%" one (matches upstream #94). |
 | **Odometer** | Total distance, km. | — | — |
 | **Interior Temperature** | Cabin temperature, °C. | Same reading the Climate entity uses. | — |
 | **Trip 2 — Distance / Avg Speed / Avg Consumption** | The car's trip-meter-2 figures. | — | — |
-| **Tyre Pressure ×4** | Pressure per tyre, kPa. | Positions follow the car's drive side. | — |
+| **Tyre Pressure ×4** | Pressure per tyre, kPa. | Positions follow the `drive_side` config option. | — |
 | **Tyre Temperature ×4** | Temperature per tyre, °C. | — | — |
-| **Charge Voltage / Current / Power / Speed** | Live charging metrics. | **Only appear when the car is charging at the moment the integration loads.** They come and go across reloads — if the car wasn't charging when HA started, they won't exist until you reload while charging. | — |
+| **Charge Voltage / Current / Power / Speed** | Live charging metrics. | Read 0 while the car isn't charging; show live values during a session. (*Charging Time Remaining* reads "Not charging" when idle.) | — |
 | **Charging Time Remaining** | Time to full as `Xh Ym`; shows "Not charging" when idle. | — | — |
-| **Vehicle Status** | Usage mode (e.g. Parked, Unlocked, Ready to Go, Active). | — | Some less-common modes may show a raw value. |
+| **Vehicle Status** | Usage mode (e.g. Parked, Unlocked, Ready to Go, Active). | — | Some less-common modes may show a raw value instead of a label — if you see one, please report it (with the raw value) so the list can be completed. |
 | **Engine Status** | Drive state (Parked / Driving / Ready / Charging). | — | — |
 | **Journey Log — Last Distance / Avg Speed / Consumption / Regeneration / Duration** | Details of the most recent logged trip. | Depend on the journey-log being fetched. | — |
 | **Journey Log Total Trips** | Count of trips on record. | — | — |
@@ -115,7 +115,7 @@ A recurring quirk worth knowing up front: **most writable entities are optimisti
 | Entity | What it does | How it behaves in HA | Known issues |
 |---|---|---|---|
 | **Seat / AC / Steering Wheel Heat Operation Duration** *(global)* | How long (0-15 min) the matching comfort feature runs when you turn it on. | Pure HA-side settings, remembered across restarts. They feed the seat-heat selects, Climate, and the steering-wheel-heat switch. | — |
-| **Charging Limit** *(per car)* | Target charge level (50-100%, in 5% steps). | The car stops charging itself when it reaches this level — set it and forget it. | — |
+| **Charging Limit** *(per car)* | Target charge level (50-100%, in 5% steps). | The car stops charging itself when it reaches this level — set it and forget it. | **Set-only:** HA writes this but doesn't read the car's current limit back, so a value set in the official app won't appear here and vice-versa. |
 
 ---
 
@@ -123,7 +123,7 @@ A recurring quirk worth knowing up front: **most writable entities are optimisti
 
 | Entity | What it does | How it behaves in HA | Known issues |
 |---|---|---|---|
-| **Departure Time** | The departure time for the pre-conditioning plan. | Part of the **departure-plan trio**. This is the write that sticks most reliably. | — |
+| **Departure Time** | The departure time for the pre-conditioning plan. | Part of the **departure-plan trio** (with Travel Plan and Departure AC). | — |
 | **Charge Start Time / Charge End Time** | The scheduled-charging window. | Part of the **charge-schedule trio** with the Charge Plan switch. | — |
 
 ---
@@ -165,7 +165,7 @@ A few entities only make sense as groups. Model your automations around these cl
 - **Departure AC** = whether the plan pre-conditions the cabin.
 - **Departure Time** = when the plan fires.
 
-Set them together, and treat **Travel Plan** as the master in automations — don't drive *Departure AC* as if it were a standalone climate switch. Of the three, the **Departure Time** write is the one that sticks most reliably.
+Set them together, and treat **Travel Plan** as the master in automations — don't drive *Departure AC* as if it were a standalone climate switch.
 
 **The charge-schedule trio.**
 *Charge Plan* (switch) plus *Charge Start Time* and *Charge End Time* are one scheduled-charging window. These are separate from the **Charging Limit** number (the target % the car charges to) and from the **Charging** switch (start/stop charging right now).
@@ -174,7 +174,7 @@ Set them together, and treat **Travel Plan** as the master in automations — do
 - **Charging** switch = start/stop charging now.
 - **Charging Status** binary sensor = is it charging.
 - **Plugged In** binary sensor = is a cable connected (true even when not charging).
-- **Charge Voltage / Current / Power / Speed** sensors = live metrics, present only while charging at load time.
+- **Charge Voltage / Current / Power / Speed** sensors = live metrics; read 0 when not charging.
 
 **Climate temperature depends on climate being on.**
 Setting the target temperature only reaches the car while Climate is on. With Climate off, a temperature change just sits in HA until you turn Climate on.
@@ -188,21 +188,14 @@ The three *Operation Duration* numbers (seat / AC / steering wheel) aren't car r
 
 | Issue | What you'll see | Status / workaround |
 |---|---|---|
-| **Optimistic writes revert** | A switch/select/climate change shows immediately, then flips back ~10s later. | Known upstream; a proposed retry/debounce fix did **not** fully resolve it. Practical mitigation: in automations, sequence the writes with small delays and a retry rather than firing them all at once. Manual control inside the car always sticks. |
+| **Optimistic writes revert** | A switch/select/climate change shows immediately, then flips back ~10s later. | Known upstream; a proposed retry/debounce fix did **not** fully resolve it. Manual control inside the car always sticks. A robust fix likely belongs in the integration's write path rather than in user automations. |
 | **Target temp ignored while climate is off** | Changing target temperature does nothing until climate is on. | Turn climate on first, or set temp then turn climate on. Consider hiding/locking the temp control in your dashboard while climate is off. |
 | **Phantom seat-ventilation selects** | The two seat-vent selects accept Off/Level 1-3 but do nothing. | Only relevant on trims with ventilated seats. Don't present them as working otherwise. |
 | **Entities go `unknown` on a sleeping car** | When the car is asleep, its entities can drop to `unknown` instead of holding their last value. | Known behaviour; they recover on the next successful poll. |
-| **Range-at-SoC sensors swapped** | *Range at 20% SoC* and *Range at 100% SoC* show each other's value. | Known upstream bug. |
+| **Range-at-SoC sensors swapped** | *Range at 20% SoC* and *Range at 100% SoC* show each other's value. | Known upstream bug (#94). |
 | **Single-session conflict** | Repeated connection errors when the same account is logged in on the app and HA at the same time. | Use a **dedicated account** for HA so the app and HA don't fight over the session. |
-| **Charge metrics come and go** | Charge Voltage/Current/Power/Speed are missing unless the car was charging when the integration loaded. | Reload the integration while charging to get them; expect them to disappear when charging ends and HA reloads. |
-| **A fully-closed window can read as "open"** | Occasionally the All Windows cover (and a per-window state) shows "open" when the windows are actually shut. | A status-detection edge case; the position reading (0–100%) is the reliable signal. |
+| **All Windows can read "open" when shut** | The *All Windows* cover (and per-window state) occasionally shows "open" when the windows are fully closed. | Known issue (#115); the position reading (0–100%) is the reliable signal — 0% = closed. |
 | **API Status exposes tokens** | The *API Status* sensor's attributes contain the account's API tokens. | Don't share screenshots or diagnostics of that entity — the tokens grant full account access. A fix is being proposed upstream. |
-
-### Sentry Mode
-
-- **Sentry Mode** is a single on/off toggle. It **arms when the car is locked** — flip the switch on and lock the car.
-- There's **no storage requirement to arm**. Plugging in a USB drive adds local recording, but it's optional.
-- On the **EU/export 7X**, USB recording was confirmed working in our own test (plugging in a USB drive created the sentry recordings folder, with playback available in the car's app). The earlier worry that export models couldn't record to USB is resolved.
 
 ---
 
@@ -210,5 +203,4 @@ The three *Operation Duration* numbers (seat / AC / steering wheel) aren't car r
 
 Things still not fully pinned down — phrased for users, not internals:
 
-1. **Sentry toggle edge cases** — on and off behave as a single toggle; whether a rapid double-toggle could leave it in the wrong state is untested.
-2. **Departure / charge plan extras** — the plans carry a couple of conditioning flags whose exact effect on the car isn't documented; they're preserved as-is when you change the parts you control.
+1. **Departure / charge plan extras** — the plans carry a couple of conditioning flags whose exact effect on the car isn't documented; they're preserved as-is when you change the parts you control.
