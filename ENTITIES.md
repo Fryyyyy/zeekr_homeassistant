@@ -105,7 +105,7 @@ A recurring quirk worth knowing up front: **most writable entities are optimisti
 | **Journey Log — Last Distance / Avg Speed / Consumption / Regeneration / Duration** | Details of the most recent logged trip. | Depend on the journey-log being fetched. | — |
 | **Journey Log Total Trips** | Count of trips on record. | — | — |
 | **Journey Log** | Number of loaded trips; the full trip list (with IDs and timestamps) is in its attributes. | Provides the trip IDs used by the *Get Trip Trackpoints* action. | Large attribute payload. |
-| **API Status** *(global)* | "Connected" / "Disconnected" for the account connection. | One per account, on the "Zeekr API" device. | **Security: its attributes contain the account's API tokens.** Don't share screenshots or diagnostics of this entity — the tokens grant full account access. A fix is being proposed upstream. |
+| **API Status** *(global)* | "Connected" / "Disconnected" for the account connection. | One per account, on the "Zeekr API" device. | **Fixed in #113** — update the integration. Pre-#113 builds exposed the account's API tokens in this entity's attributes (full account access), so don't share screenshots or diagnostics taken from an older version. |
 | **API Requests / Invokes — Today / Total** *(global)* | Counters for API usage; the "today" counters reset at local midnight. | Useful for health/quota monitoring. | — |
 
 ---
@@ -195,7 +195,7 @@ The three *Operation Duration* numbers (seat / AC / steering wheel) aren't car r
 | **Range-at-SoC sensors swapped** | *Range at 20% SoC* and *Range at 100% SoC* show each other's value. | Known upstream bug (#94). |
 | **Single-session conflict** | Repeated connection errors when the same account is logged in on the app and HA at the same time. | Use a **dedicated account** for HA so the app and HA don't fight over the session. |
 | **All Windows can read "open" when shut** | The *All Windows* cover (and per-window state) occasionally shows "open" when the windows are fully closed. | Known issue (#115); the position reading (0–100%) is the reliable signal — 0% = closed. |
-| **API Status exposes tokens** | The *API Status* sensor's attributes contain the account's API tokens. | Don't share screenshots or diagnostics of that entity — the tokens grant full account access. A fix is being proposed upstream. |
+| **API Status exposed tokens** *(fixed)* | On pre-#113 builds, the *API Status* sensor's attributes contained the account's API tokens. | **Fixed in #113** — update the integration. On older builds the tokens grant full account access, so don't share diagnostics from a pre-#113 version. |
 
 ---
 
