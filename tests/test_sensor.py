@@ -4,6 +4,8 @@ from custom_components.zeekr_ev.sensor import (
     ZeekrVehicleStatusSensor,
     ZeekrEngineStatusSensor,
     ZeekrChargingTimeFormattedSensor,
+    _latest_journey_trip,
+    _journey_last_duration,
 )
 
 
@@ -364,3 +366,49 @@ def test_api_status_sensor_disconnected():
     coordinator = MockCoordinator()
     sensor = ZeekrAPIStatusSensor(coordinator, "entry_1")
     assert sensor.native_value == "Disconnected"
+
+
+# --- Journey Log helpers -------------------------------------------------
+
+def _journey_data(trips, total=50):
+    return {"journeyLog": {"total": total, "data": trips}}
+
+
+# Deliberately out of order (older trip first) — index 0 would be the wrong
+# trip here, which is exactly what the startTime lookup guards against.
+_JOURNEY_TRIPS = [
+    {
+        "tripId": 11,
+        "startTime": 1781695402000,
+        "endTime": 1781695928000,
+        "traveledDistance": 7,
+    },
+    {
+        "tripId": 12,
+        "startTime": 1781696400000,
+        "endTime": 1781696775000,
+        "traveledDistance": 4,
+    },
+]
+
+
+def test_latest_journey_trip_picks_newest_by_starttime():
+    """The newest trip wins on startTime, not on list position."""
+    latest = _latest_journey_trip(_journey_data(_JOURNEY_TRIPS))
+    assert latest["tripId"] == 12
+    assert latest["traveledDistance"] == 4
+
+
+def test_latest_journey_trip_handles_empty_inputs():
+    assert _latest_journey_trip({}) == {}
+    assert _latest_journey_trip(_journey_data([])) == {}
+
+
+def test_journey_last_duration_from_newest_trip():
+    # (1781696775000 - 1781696400000) / 60000 = 6.25 -> 6 minutes
+    assert _journey_last_duration(_journey_data(_JOURNEY_TRIPS)) == 6
+
+
+def test_journey_last_duration_missing_times_returns_none():
+    assert _journey_last_duration(_journey_data([{"startTime": 1}])) is None
+    assert _journey_last_duration({}) is None

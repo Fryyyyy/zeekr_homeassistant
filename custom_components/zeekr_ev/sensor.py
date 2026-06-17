@@ -34,6 +34,28 @@ from .utils import get_api_version
 _LOGGER = logging.getLogger(__name__)
 
 
+def _latest_journey_trip(data: dict) -> dict:
+    """Return the most recent journey-log trip, chosen by startTime.
+
+    The API has been observed to return trips newest-first, but the ordering
+    is not guaranteed — so we pick the trip with the highest startTime
+    explicitly rather than trusting index 0.
+    """
+    trips = data.get("journeyLog", {}).get("data") or []
+    if not trips:
+        return {}
+    return max(trips, key=lambda t: t.get("startTime") or 0)
+
+
+def _journey_last_duration(data: dict) -> int | None:
+    """Duration of the most recent trip, in whole minutes."""
+    trip = _latest_journey_trip(data)
+    start, end = trip.get("startTime"), trip.get("endTime")
+    if start and end:
+        return round((end - start) / 60000)
+    return None
+
+
 def get_tire_position_label(api_position: str, drive_side: str) -> str:
     """
     Map API tire position to display label based on vehicle drive side.
@@ -358,6 +380,8 @@ async def async_setup_entry(
         entities.append(ZeekrEngineStatusSensor(coordinator, vin))
 
         # Journey Log sensors
+        # Each "last" sensor reads the most recent trip via _latest_journey_trip
+        # (max startTime), so they stay correct regardless of API ordering.
         # Journey Log Last Distance
         entities.append(
             ZeekrSensor(
@@ -365,10 +389,10 @@ async def async_setup_entry(
                 vin,
                 "journey_log_last_distance",
                 "Journey Log Last Distance",
-                lambda d: d.get("journeyLog", {}).get("data", [{}])[0].get("traveledDistance") if d.get("journeyLog", {}).get("data") else None,
+                lambda d: _latest_journey_trip(d).get("traveledDistance"),
                 UnitOfLength.KILOMETERS,
                 SensorDeviceClass.DISTANCE,
-                None,
+                SensorStateClass.MEASUREMENT,
             )
         )
         # Journey Log Last Avg Speed
@@ -378,23 +402,24 @@ async def async_setup_entry(
                 vin,
                 "journey_log_last_avg_speed",
                 "Journey Log Last Avg Speed",
-                lambda d: d.get("journeyLog", {}).get("data", [{}])[0].get("avgSpeed") if d.get("journeyLog", {}).get("data") else None,
+                lambda d: _latest_journey_trip(d).get("avgSpeed"),
                 UnitOfSpeed.KILOMETERS_PER_HOUR,
                 SensorDeviceClass.SPEED,
-                None,
+                SensorStateClass.MEASUREMENT,
             )
         )
-        # Journey Log Last Consumption
+        # Journey Log Last Consumption (a rate in kWh/100km — no HA device_class
+        # exists for consumption-per-distance, so leave it unset).
         entities.append(
             ZeekrSensor(
                 coordinator,
                 vin,
                 "journey_log_last_consumption",
                 "Journey Log Last Consumption",
-                lambda d: d.get("journeyLog", {}).get("data", [{}])[0].get("electricConsumption") if d.get("journeyLog", {}).get("data") else None,
+                lambda d: _latest_journey_trip(d).get("electricConsumption"),
                 "kWh/100km",
                 None,
-                None,
+                SensorStateClass.MEASUREMENT,
             )
         )
         # Journey Log Last Regeneration
@@ -404,10 +429,14 @@ async def async_setup_entry(
                 vin,
                 "journey_log_last_regeneration",
                 "Journey Log Last Regeneration",
-                lambda d: d.get("journeyLog", {}).get("data", [{}])[0].get("electricRegeneration") if d.get("journeyLog", {}).get("data") else None,
+                lambda d: _latest_journey_trip(d).get("electricRegeneration"),
                 "Wh",
                 SensorDeviceClass.ENERGY,
-                None,
+                # Absolute Wh recovered per trip (e.g. 560 Wh on a 4 km trip) —
+                # read as a rate it would be an implausibly small ~5 Wh/100km, so
+                # this is energy, not a per-distance figure. MEASUREMENT records
+                # per-trip statistics.
+                SensorStateClass.MEASUREMENT,
             )
         )
         # Journey Log Last Duration
@@ -417,14 +446,10 @@ async def async_setup_entry(
                 vin,
                 "journey_log_last_duration",
                 "Journey Log Last Duration",
-                lambda d: (
-                    round((d.get("journeyLog", {}).get("data", [{}])[0].get("endTime", 0) - d.get("journeyLog", {}).get("data", [{}])[0].get("startTime", 0)) / 60000)
-                    if d.get("journeyLog", {}).get("data") and d.get("journeyLog", {}).get("data", [{}])[0].get("endTime") and d.get("journeyLog", {}).get("data", [{}])[0].get("startTime")
-                    else None
-                ),
+                _journey_last_duration,
                 UnitOfTime.MINUTES,
                 SensorDeviceClass.DURATION,
-                None,
+                SensorStateClass.MEASUREMENT,
             )
         )
         # Journey Log Total Trips (from API total)
@@ -736,10 +761,14 @@ class ZeekrEngineStatusSensor(CoordinatorEntity, SensorEntity):
 class ZeekrJourneyLogSensor(CoordinatorEntity, SensorEntity):
     """Zeekr Journey Log sensor with trip history as attributes."""
 
+    _attr_has_entity_name = True
+
     def __init__(self, coordinator: ZeekrCoordinator, vin: str):
         super().__init__(coordinator)
         self.vin = vin
-        self._attr_name = f"Zeekr {vin[-4:] if vin else ''} Journey Log"
+        # has_entity_name: the device name prefixes this automatically, matching
+        # every other sensor in the integration ("<device> Journey Log").
+        self._attr_name = "Journey Log"
         self._attr_unique_id = f"{vin}_journey_log"
         self._attr_icon = "mdi:map-marker-path"
 
@@ -761,6 +790,11 @@ class ZeekrJourneyLogSensor(CoordinatorEntity, SensorEntity):
         if not trips_raw:
             return {}
 
+        # Newest trip first, regardless of API ordering.
+        trips_raw = sorted(
+            trips_raw, key=lambda t: t.get("startTime") or 0, reverse=True
+        )
+
         trips = []
         for trip in trips_raw:
             track_points = trip.get("trackPoints", [])
@@ -781,7 +815,9 @@ class ZeekrJourneyLogSensor(CoordinatorEntity, SensorEntity):
                 "duration_min": duration_min,
                 "distance_km": trip.get("traveledDistance"),
                 "avg_speed_kmh": trip.get("avgSpeed"),
-                "consumption_kwh": trip.get("electricConsumption"),
+                # electricConsumption is a rate (kWh/100km), not absolute kWh —
+                # e.g. 21 on a 4 km trip. Key renamed to reflect the real unit.
+                "consumption_kwh_per_100km": trip.get("electricConsumption"),
                 "regeneration_wh": trip.get("electricRegeneration"),
                 "start_lat": start_point.get("latitude"),
                 "start_lon": start_point.get("longitude"),
