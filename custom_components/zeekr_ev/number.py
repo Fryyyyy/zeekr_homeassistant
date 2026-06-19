@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+
 from homeassistant.components.number import NumberEntity, RestoreNumber
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTime
@@ -168,5 +170,19 @@ class ZeekrChargingLimitNumber(ZeekrEntity, RestoreNumber):
         await self.hass.async_add_executor_job(
             vehicle.do_remote_control, command, service_id, setting
         )
+
+        # Reflect the new target immediately (native_value prefers the
+        # coordinator value, which would otherwise snap back to the old SoC),
+        # then reconcile from the backend after a short delay — an immediate
+        # poll can still return the previous SoC before the car applies it.
+        self.coordinator.data.setdefault(self.vin, {}).setdefault("chargingLimit", {})[
+            "soc"
+        ] = soc_value
         self._attr_native_value = value
         self.async_write_ha_state()
+
+        async def _reconcile() -> None:
+            await asyncio.sleep(10)
+            await self.coordinator.async_request_refresh()
+
+        self.hass.async_create_task(_reconcile())

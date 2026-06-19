@@ -1,6 +1,14 @@
-from unittest.mock import MagicMock, AsyncMock
+import asyncio
+from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
 from custom_components.zeekr_ev.number import ZeekrChargingLimitNumber, ZeekrConfigNumber
+
+
+@pytest.fixture(autouse=True)
+def _instant_sleep():
+    """Make the post-write reconcile delay instant in tests."""
+    with patch("custom_components.zeekr_ev.number.asyncio.sleep", new=AsyncMock()):
+        yield
 
 
 class MockVehicle:
@@ -36,9 +44,15 @@ class DummyHass:
     def __init__(self):
         self.config = DummyConfig()
         self.data = {}
+        self.created_tasks = []
 
     async def async_add_executor_job(self, func, *args, **kwargs):
         return func(*args, **kwargs)
+
+    def async_create_task(self, coro, *args, **kwargs):
+        task = asyncio.ensure_future(coro)
+        self.created_tasks.append(task)
+        return task
 
 
 @pytest.mark.asyncio
@@ -79,6 +93,32 @@ async def test_charging_limit_number():
     # Check optimistic update
     assert number_entity.native_value == 80.0
     number_entity.async_write_ha_state.assert_called()
+
+    # Drain the scheduled reconcile task to avoid a dangling pending task.
+    await asyncio.gather(*number_entity.hass.created_tasks)
+
+
+@pytest.mark.asyncio
+async def test_charging_limit_write_reconciles_after_delay():
+    """A charging-limit write updates the value immediately and schedules a refresh."""
+    vin = "VIN1"
+    vehicle = MockVehicle(vin)
+    coordinator = MockCoordinator([vehicle])
+
+    number_entity = ZeekrChargingLimitNumber(coordinator, vin)
+    number_entity.hass = DummyHass()
+    number_entity.async_write_ha_state = MagicMock()
+
+    await number_entity.async_set_native_value(80.0)
+
+    # Optimistic coordinator update so native_value doesn't snap back.
+    assert coordinator.data[vin]["chargingLimit"]["soc"] == 800
+    assert number_entity.native_value == 80.0
+
+    # A reconcile task was scheduled; run it and confirm it refreshes.
+    assert number_entity.hass.created_tasks
+    await asyncio.gather(*number_entity.hass.created_tasks)
+    coordinator.async_request_refresh.assert_called_once()
 
 
 @pytest.mark.asyncio
