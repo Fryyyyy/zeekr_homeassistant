@@ -45,6 +45,7 @@ def mock_data_update_coordinator_init(self, hass, logger, name, update_interval=
     self.logger = logger
     self.name = name
     self.update_interval = update_interval
+    self.data = None  # matches DataUpdateCoordinator, which initialises data to None
     self._listeners = []
     self._micro_controller = MagicMock()
 
@@ -236,6 +237,133 @@ async def test_coordinator_update_charging_limit_failure():
         # Others should be present because they run in parallel and return_exceptions=True
         assert "chargingStatus" in data[vin]
         assert "remoteControlState" in data[vin]["additionalVehicleStatus"]
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_carries_forward_last_known_on_status_failure():
+    """A failed primary-status fetch keeps the last-known data for that VIN."""
+    vin = "VIN1"
+    vehicle = MockVehicle(vin)
+    vehicle.get_status.side_effect = Exception("API Error")
+
+    client = MockClient([vehicle])
+    hass = DummyHass()
+
+    with patch("homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__", side_effect=mock_data_update_coordinator_init, autospec=True):
+        coordinator = ZeekrCoordinator(hass, client, DummyConfig())
+
+    coordinator.request_stats = MagicMock()
+    coordinator.request_stats.async_inc_request = AsyncMock()
+
+    # Seed last-known data from a previous successful poll.
+    previous = {vin: {"additionalVehicleStatus": {"foo": "bar"}}}
+    coordinator.data = previous
+
+    try:
+        result = await coordinator._async_update_vehicle(vehicle)
+        assert result == (vin, previous[vin])
+        # Sub-fetches must not run when the primary status fetch fails.
+        vehicle.get_remote_control_state.assert_not_called()
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_returns_none_when_no_last_known():
+    """With no prior data, a failed status fetch still returns None (genuine unknown)."""
+    vin = "VIN1"
+    vehicle = MockVehicle(vin)
+    vehicle.get_status.side_effect = Exception("API Error")
+
+    client = MockClient([vehicle])
+    hass = DummyHass()
+
+    with patch("homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__", side_effect=mock_data_update_coordinator_init, autospec=True):
+        coordinator = ZeekrCoordinator(hass, client, DummyConfig())
+
+    coordinator.request_stats = MagicMock()
+    coordinator.request_stats.async_inc_request = AsyncMock()
+    coordinator.data = None
+
+    try:
+        result = await coordinator._async_update_vehicle(vehicle)
+        assert result is None
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_stops_carrying_forward_after_max_stale_updates():
+    """Carry-forward is bounded: after MAX_STALE_UPDATES failures it returns None."""
+    from custom_components.zeekr_ev.coordinator import MAX_STALE_UPDATES
+
+    vin = "VIN1"
+    vehicle = MockVehicle(vin)
+    vehicle.get_status.side_effect = Exception("API Error")
+
+    client = MockClient([vehicle])
+    hass = DummyHass()
+
+    with patch("homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__", side_effect=mock_data_update_coordinator_init, autospec=True):
+        coordinator = ZeekrCoordinator(hass, client, DummyConfig())
+
+    coordinator.request_stats = MagicMock()
+    coordinator.request_stats.async_inc_request = AsyncMock()
+
+    previous = {vin: {"additionalVehicleStatus": {"foo": "bar"}}}
+    coordinator.data = previous
+
+    try:
+        # The first MAX_STALE_UPDATES failures carry the last-known data forward.
+        for _ in range(MAX_STALE_UPDATES):
+            assert await coordinator._async_update_vehicle(vehicle) == (vin, previous[vin])
+        # The next failure exceeds the budget and drops the vehicle.
+        assert await coordinator._async_update_vehicle(vehicle) is None
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_resets_stale_count_on_successful_poll():
+    """A successful poll clears the stale streak so carry-forward starts fresh."""
+    from custom_components.zeekr_ev.coordinator import MAX_STALE_UPDATES
+
+    vin = "VIN1"
+    vehicle = MockVehicle(vin)
+    good_status = {"additionalVehicleStatus": {"foo": "bar"}}
+
+    client = MockClient([vehicle])
+    hass = DummyHass()
+
+    with patch("homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__", side_effect=mock_data_update_coordinator_init, autospec=True):
+        coordinator = ZeekrCoordinator(hass, client, DummyConfig())
+
+    coordinator.request_stats = MagicMock()
+    coordinator.request_stats.async_inc_request = AsyncMock()
+    coordinator.data = {vin: good_status}
+
+    try:
+        # Burn through the stale budget with failures.
+        vehicle.get_status.side_effect = Exception("API Error")
+        for _ in range(MAX_STALE_UPDATES):
+            await coordinator._async_update_vehicle(vehicle)
+        assert coordinator._stale_count.get(vin) == MAX_STALE_UPDATES
+
+        # A successful poll resets the streak...
+        vehicle.get_status.side_effect = None
+        vehicle.get_status.return_value = good_status
+        await coordinator._async_update_vehicle(vehicle)
+        assert vin not in coordinator._stale_count
+
+        # ...so carry-forward is available again for a fresh failure.
+        vehicle.get_status.side_effect = Exception("API Error")
+        assert await coordinator._async_update_vehicle(vehicle) == (vin, good_status)
     finally:
         if coordinator._unsub_reset:
             coordinator._unsub_reset()

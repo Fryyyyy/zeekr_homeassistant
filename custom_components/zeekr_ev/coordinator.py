@@ -26,6 +26,12 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 
+# How many consecutive failed status polls we serve last-known ("stale") data
+# for before we give up and let the vehicle drop out (return None). With the
+# default 5-minute polling interval this is ~15 minutes of carry-forward, after
+# which the entities go unavailable so a sustained outage stays visible.
+MAX_STALE_UPDATES = 3
+
 
 class ZeekrCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Zeekr data."""
@@ -46,6 +52,9 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         self.steering_wheel_duration = 15
         self.request_stats = ZeekrRequestStats(hass)
         self.latest_poll_time: Optional[str] = None  # Track latest poll time
+        # Count of consecutive failed status polls per VIN, so carry-forward of
+        # stale data is bounded (see MAX_STALE_UPDATES).
+        self._stale_count: dict[str, int] = {}
         polling_interval = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL)
         super().__init__(
             hass,
@@ -87,8 +96,42 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 vehicle.get_status
             )
         except Exception as charge_err:
-            _LOGGER.error("Error fetching status for %s: %s", vehicle.vin, charge_err)
+            # Carry forward the last-known data instead of dropping the vehicle.
+            # A failed primary-status fetch (cloud briefly unreachable, or the
+            # car asleep) would otherwise flip every entity to "unknown" until
+            # the next successful poll. This is bounded: after MAX_STALE_UPDATES
+            # consecutive failures we stop holding values and return None, so a
+            # sustained outage still surfaces (entities go unavailable) rather
+            # than the integration silently serving stale data forever.
+            last_known = (self.data or {}).get(vehicle.vin)
+            stale_count = self._stale_count.get(vehicle.vin, 0) + 1
+            if last_known is not None and stale_count <= MAX_STALE_UPDATES:
+                self._stale_count[vehicle.vin] = stale_count
+                _LOGGER.warning(
+                    "Status fetch failed for %s (%s); serving last-known (stale) "
+                    "data [%d/%d]",
+                    vehicle.vin,
+                    charge_err,
+                    stale_count,
+                    MAX_STALE_UPDATES,
+                )
+                return vehicle.vin, last_known
+            if last_known is not None:
+                _LOGGER.error(
+                    "Status fetch failed for %s (%s); giving up after %d stale "
+                    "updates, vehicle will go unavailable",
+                    vehicle.vin,
+                    charge_err,
+                    MAX_STALE_UPDATES,
+                )
+            else:
+                _LOGGER.error(
+                    "Error fetching status for %s: %s", vehicle.vin, charge_err
+                )
             return None
+
+        # Primary status fetch succeeded — clear any stale streak for this VIN.
+        self._stale_count.pop(vehicle.vin, None)
 
         # Define parallel tasks
         async def fetch_remote_control_state():
