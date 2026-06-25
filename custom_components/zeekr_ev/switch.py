@@ -300,15 +300,46 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
             await self.hass.async_add_executor_job(
                 vehicle.do_remote_control, command, service_id, setting
             )
-            self._update_local_state_optimistically(is_on=False)
-            self.async_write_ha_state()
-            if self.field == "sentry_mode":
+            if self.field == "charging":
+                # Wait for backend confirmation that charging has stopped — symmetric
+                # with async_turn_on. An immediate coordinator refresh can still read the
+                # previous (charging) state and revert the switch off->on (~115-142 ms);
+                # see Fryyyyy/zeekr_homeassistant#117.
+                timeout = 30  # seconds
+                poll_interval = 2
+                waited = 0
+                stop_confirmed = False
+                while waited < timeout:
+                    try:
+                        status = await self.hass.async_add_executor_job(vehicle.get_charging_status)
+                        await asyncio.sleep(poll_interval)
+                        waited += poll_interval
+                        charger_state = (
+                            status.get("chargerState")
+                            if isinstance(status, dict) else None
+                        )
+                        # iOS trace: chargerState 25/26 is stopped, 1/2 is charging
+                        if charger_state is not None and str(charger_state) in ("25", "26"):
+                            stop_confirmed = True
+                            break
+                    except Exception as e:
+                        _LOGGER.info("Error while polling for charging stop confirmation: %s", e)
+                        pass
+                # Confirmed stopped -> off; if never confirmed, stay on (still charging)
+                self._update_local_state_optimistically(is_on=not stop_confirmed)
+                self.async_write_ha_state()
+            elif self.field == "sentry_mode":
+                self._update_local_state_optimistically(is_on=False)
+                self.async_write_ha_state()
+
                 async def delayed_refresh():
                     await asyncio.sleep(10)
                     await self.coordinator.async_request_refresh()
 
                 self.hass.async_create_task(delayed_refresh())
             else:
+                self._update_local_state_optimistically(is_on=False)
+                self.async_write_ha_state()
                 await self.coordinator.async_request_refresh()
 
     def _update_local_state_optimistically(self, is_on: bool) -> None:

@@ -181,8 +181,10 @@ async def test_charging_switch():
         "electricVehicleStatus"]["chargerState"] == "2"
     switch.async_write_ha_state.assert_called()
 
-    # Test Turn Off (Stop Charging)
-    await switch.async_turn_off()
+    # Test Turn Off (Stop Charging) — confirm-loop polls until stopped (25/26)
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        vehicle_mock.get_charging_status = MagicMock(return_value={"chargerState": "25"})
+        await switch.async_turn_off()
 
     vehicle_mock.do_remote_control.assert_called_with(
         "stop",
@@ -196,10 +198,20 @@ async def test_charging_switch():
             ]
         }
     )
-    # Optimistic update
+    # Confirmed stopped -> optimistic off
     assert coordinator.data[vin]["additionalVehicleStatus"][
         "electricVehicleStatus"]["chargerState"] == "25"
     switch.async_write_ha_state.assert_called()
+
+    # Test Turn Off timeout — backend keeps reporting charging (2): stay ON, no revert.
+    # This is the #117 fix: an unconfirmed stop must NOT optimistically flip off.
+    coordinator.data[vin]["additionalVehicleStatus"][
+        "electricVehicleStatus"]["chargerState"] = "2"
+    with patch("asyncio.sleep", new_callable=AsyncMock):
+        vehicle_mock.get_charging_status = MagicMock(return_value={"chargerState": "2"})
+        await switch.async_turn_off()
+    assert coordinator.data[vin]["additionalVehicleStatus"][
+        "electricVehicleStatus"]["chargerState"] == "2"
 
 
 @pytest.mark.asyncio
