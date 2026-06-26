@@ -1,9 +1,6 @@
 name: Draft a release note
 on:
-  push:
-    branches:
-      - main
-      - master
+  workflow_dispatch:
 jobs:
   draft_release:
     name: Release Drafter
