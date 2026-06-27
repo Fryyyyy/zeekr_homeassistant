@@ -18,15 +18,13 @@ class MockCoordinator:
         self.data = data
         self.vehicles = {}
         self.async_inc_invoke = AsyncMock()
+        self.async_request_refresh = AsyncMock()
         self.steering_wheel_duration = 15
 
     def get_vehicle_by_vin(self, vin):
         return self.vehicles.get(vin)
 
     def inc_invoke(self):
-        pass
-
-    async def async_request_refresh(self):
         pass
 
 
@@ -176,10 +174,9 @@ async def test_charging_switch():
             ]
         }
     )
-    # Optimistic update
-    assert coordinator.data[vin]["additionalVehicleStatus"][
-        "electricVehicleStatus"]["chargerState"] == "2"
-    switch.async_write_ha_state.assert_called()
+    # Car-confirmed charging -> coordinator refresh (not an optimistic local write)
+    coordinator.async_request_refresh.assert_awaited()
+    coordinator.async_request_refresh.reset_mock()
 
     # Test Turn Off (Stop Charging) — confirm-loop polls until stopped (25/26)
     with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -198,13 +195,12 @@ async def test_charging_switch():
             ]
         }
     )
-    # Confirmed stopped -> optimistic off
-    assert coordinator.data[vin]["additionalVehicleStatus"][
-        "electricVehicleStatus"]["chargerState"] == "25"
-    switch.async_write_ha_state.assert_called()
+    # Car-confirmed stop -> coordinator refresh (not an optimistic local write)
+    coordinator.async_request_refresh.assert_awaited()
+    coordinator.async_request_refresh.reset_mock()
 
     # Test Turn Off timeout — backend keeps reporting charging (2): stay ON, no revert.
-    # This is the #117 fix: an unconfirmed stop must NOT optimistically flip off.
+    # Unconfirmed stop keeps the optimistic "on" and does NOT refresh (stale-risk).
     coordinator.data[vin]["additionalVehicleStatus"][
         "electricVehicleStatus"]["chargerState"] = "2"
     with patch("asyncio.sleep", new_callable=AsyncMock):
@@ -212,6 +208,7 @@ async def test_charging_switch():
         await switch.async_turn_off()
     assert coordinator.data[vin]["additionalVehicleStatus"][
         "electricVehicleStatus"]["chargerState"] == "2"
+    coordinator.async_request_refresh.assert_not_awaited()
 
 
 @pytest.mark.asyncio

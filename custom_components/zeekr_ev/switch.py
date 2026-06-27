@@ -220,10 +220,13 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                         _LOGGER.info("Error while polling for charging status confirmation: %s", e)
                         pass
                 if charging_confirmed:
-                    self._update_local_state_optimistically(is_on=True)
+                    # Car-confirmed charging — the loop waited for the backend, so refresh
+                    # the real state directly instead of an optimistic write (PR #122 review).
+                    await self.coordinator.async_request_refresh()
                 else:
+                    # Not confirmed within the timeout — start didn't take; optimistic off.
                     self._update_local_state_optimistically(is_on=False)
-                self.async_write_ha_state()
+                    self.async_write_ha_state()
             elif self.field == "sentry_mode":
                 self._update_local_state_optimistically(is_on=True)
                 self.async_write_ha_state()
@@ -325,9 +328,16 @@ class ZeekrSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
                     except Exception as e:
                         _LOGGER.info("Error while polling for charging stop confirmation: %s", e)
                         pass
-                # Confirmed stopped -> off; if never confirmed, stay on (still charging)
-                self._update_local_state_optimistically(is_on=not stop_confirmed)
-                self.async_write_ha_state()
+                if stop_confirmed:
+                    # Car-confirmed stop — the loop waited for the backend, so refresh the
+                    # real state directly (no off->on revert risk) instead of an optimistic
+                    # write that isn't actually optimistic anymore (PR #122 review).
+                    await self.coordinator.async_request_refresh()
+                else:
+                    # Stop not confirmed within the timeout — keep it on (still charging);
+                    # don't trust a possibly-stale refresh here.
+                    self._update_local_state_optimistically(is_on=True)
+                    self.async_write_ha_state()
             elif self.field == "sentry_mode":
                 self._update_local_state_optimistically(is_on=False)
                 self.async_write_ha_state()
