@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import logging
 
 from homeassistant.components.sensor import (
@@ -32,6 +33,13 @@ from .coordinator import ZeekrCoordinator
 from .utils import get_api_version
 
 _LOGGER = logging.getLogger(__name__)
+
+# Home Assistant refuses to store state attributes larger than 16384 bytes
+# ("Attributes will not be stored" + a DB-performance warning). A full
+# journey-log page (up to 50 trips) can exceed that, so the Journey Log sensor
+# includes only the most-recent trips that fit within this safe budget (headroom
+# left for the wrapper keys + HA's own serialization overhead).
+_JOURNEY_LOG_ATTR_BUDGET = 14000
 
 
 def _latest_journey_trip(data: dict) -> dict:
@@ -777,7 +785,15 @@ class ZeekrJourneyLogSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        """Return all trips as attributes."""
+        """Return recent trips as attributes.
+
+        HA caps stored state attributes at 16384 bytes; a full 50-trip page can
+        exceed that ("Attributes will not be stored" + DB-performance warning).
+        So we include the most-recent trips that fit within
+        ``_JOURNEY_LOG_ATTR_BUDGET`` and expose ``displayed_trips`` vs.
+        ``total_trips`` so the cap is transparent. The dedicated ``last_*``
+        sensors carry the latest trip for long-term statistics regardless.
+        """
         data = self.coordinator.data.get(self.vin, {})
         journey_log = data.get("journeyLog", {})
         trips_raw = journey_log.get("data", [])
@@ -791,6 +807,7 @@ class ZeekrJourneyLogSensor(CoordinatorEntity, SensorEntity):
         )
 
         trips = []
+        used = 0
         for trip in trips_raw:
             track_points = trip.get("trackPoints", [])
             start_point = track_points[0] if track_points else {}
@@ -801,10 +818,13 @@ class ZeekrJourneyLogSensor(CoordinatorEntity, SensorEntity):
             end_ts = trip.get("endTime", 0)
             duration_min = round((end_ts - start_ts) / 60000) if end_ts and start_ts else None
 
-            trips.append({
+            entry = {
+                # trip_id + report_time are the handle for the
+                # zeekr_ev.get_trip_trackpoints service (full GPS route on
+                # demand); the top-level "vin" key already identifies the car,
+                # so it isn't repeated per trip.
                 "trip_id": trip.get("tripId"),
                 "report_time": trip.get("reportTime"),
-                "vin": self.vin,
                 "start_time": start_ts,
                 "end_time": end_ts,
                 "duration_min": duration_min,
@@ -820,11 +840,19 @@ class ZeekrJourneyLogSensor(CoordinatorEntity, SensorEntity):
                 "end_lon": end_point.get("longitude"),
                 "start_odometer": trip.get("startOdometer"),
                 "end_odometer": trip.get("endOdometer"),
-            })
+            }
+
+            # Stop before the blob would exceed HA's attribute cap, but always
+            # keep at least the most-recent trip.
+            used += len(json.dumps(entry, default=str))
+            if trips and used > _JOURNEY_LOG_ATTR_BUDGET:
+                break
+            trips.append(entry)
 
         return {
             "vin": self.vin,
             "trips": trips,
+            "displayed_trips": len(trips),
             "total_trips": journey_log.get("total", 0),
         }
 

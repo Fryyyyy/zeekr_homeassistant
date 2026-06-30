@@ -4,9 +4,11 @@ from custom_components.zeekr_ev.sensor import (
     ZeekrVehicleStatusSensor,
     ZeekrEngineStatusSensor,
     ZeekrChargingTimeFormattedSensor,
+    ZeekrJourneyLogSensor,
     _latest_journey_trip,
     _journey_last_duration,
 )
+import json
 
 
 class DummyCoordinator:
@@ -412,3 +414,64 @@ def test_journey_last_duration_from_newest_trip():
 def test_journey_last_duration_missing_times_returns_none():
     assert _journey_last_duration(_journey_data([{"startTime": 1}])) is None
     assert _journey_last_duration({}) is None
+
+
+# --- Journey Log attribute size cap --------------------------------------
+
+def _make_trips(n):
+    """n realistic full trips (with start/end GPS markers + odometers)."""
+    base = 1781600000000
+    trips = []
+    for i in range(n):
+        start = base + i * 3_600_000
+        trips.append({
+            "tripId": 1000 + i,
+            "reportTime": start,
+            "startTime": start,
+            "endTime": start + 1_800_000,
+            "traveledDistance": 42.7,
+            "avgSpeed": 53.2,
+            "electricConsumption": 18.4,
+            "electricRegeneration": 560,
+            "startOdometer": 12345.6 + i,
+            "endOdometer": 12388.3 + i,
+            "trackPoints": [
+                {"latitude": 52.0907374, "longitude": 5.1214201},
+                {"latitude": 52.3675734, "longitude": 4.9041389},
+            ],
+        })
+    return trips
+
+
+def test_journey_log_attributes_stay_under_ha_16kb_cap():
+    """A full 50-trip page must not exceed HA's 16384-byte attribute limit."""
+    coordinator = DummyCoordinator({"VIN1": _journey_data(_make_trips(50), total=50)})
+    sensor = ZeekrJourneyLogSensor(coordinator, "VIN1")
+    attrs = sensor.extra_state_attributes
+
+    assert len(json.dumps(attrs, default=str)) <= 16384
+    # The page is capped, but the full count is still reported.
+    assert attrs["total_trips"] == 50
+    assert attrs["displayed_trips"] == len(attrs["trips"])
+    assert attrs["displayed_trips"] < 50
+    # Newest trip is kept (sorted newest-first by start_time).
+    assert attrs["trips"][0]["trip_id"] == 1049
+    # Redundant per-trip vin is dropped; GPS markers are retained.
+    assert "vin" not in attrs["trips"][0]
+    assert attrs["trips"][0]["start_lat"] == 52.0907374
+
+
+def test_journey_log_attributes_small_page_keeps_all_trips():
+    """A handful of trips fits comfortably and is not capped."""
+    coordinator = DummyCoordinator({"VIN1": _journey_data(_make_trips(3), total=3)})
+    sensor = ZeekrJourneyLogSensor(coordinator, "VIN1")
+    attrs = sensor.extra_state_attributes
+
+    assert attrs["displayed_trips"] == 3
+    assert len(json.dumps(attrs, default=str)) <= 16384
+
+
+def test_journey_log_attributes_empty_when_no_trips():
+    coordinator = DummyCoordinator({"VIN1": _journey_data([], total=0)})
+    sensor = ZeekrJourneyLogSensor(coordinator, "VIN1")
+    assert sensor.extra_state_attributes == {}
