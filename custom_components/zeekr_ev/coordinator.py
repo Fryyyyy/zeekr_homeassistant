@@ -14,7 +14,14 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 import homeassistant.helpers.event as event
 
 
-from .const import CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL, DOMAIN
+from .const import (
+    CONF_POLLING_INTERVAL,
+    CONF_POLLING_INTERVAL_SECONDS,
+    CONF_POLLING_INTERVAL_DRIVING_SECONDS,
+    DEFAULT_POLLING_INTERVAL,
+    DEFAULT_POLLING_INTERVAL_DRIVING_SECONDS,
+    DOMAIN,
+)
 from .request_stats import ZeekrRequestStats
 
 if TYPE_CHECKING:
@@ -55,12 +62,27 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         # Count of consecutive failed status polls per VIN, so carry-forward of
         # stale data is bounded (see MAX_STALE_UPDATES).
         self._stale_count: dict[str, int] = {}
-        polling_interval = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL)
+        # Polling interval is configured in SECONDS. Older configs stored it in
+        # minutes; fall back to that (x60) for backward compatibility. Floor 5 s.
+        polling_seconds = entry.data.get(CONF_POLLING_INTERVAL_SECONDS)
+        if not polling_seconds:
+            minutes = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL)
+            polling_seconds = minutes * 60
+        polling_seconds = max(int(polling_seconds), 5)
+        self._base_interval = timedelta(seconds=polling_seconds)
+        # Optional faster interval while driving (engine on). None = disabled.
+        driving_seconds = entry.data.get(
+            CONF_POLLING_INTERVAL_DRIVING_SECONDS, DEFAULT_POLLING_INTERVAL_DRIVING_SECONDS
+        )
+        self._driving_interval = (
+            timedelta(seconds=max(int(driving_seconds), 5)) if driving_seconds else None
+        )
+        self._driving_now = False
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(minutes=polling_interval),
+            update_interval=self._base_interval,
         )
 
         # Schedule daily reset at midnight
@@ -232,6 +254,33 @@ class ZeekrCoordinator(DataUpdateCoordinator):
 
         return vehicle.vin, vehicle_data
 
+    def _apply_dynamic_interval(self, data: dict) -> None:
+        """Use the fast interval while any vehicle is driving (engine on).
+
+        No-op when no driving interval is configured. Takes effect on the next
+        scheduled refresh, so there is up to one base-interval of lag before the
+        fast rate kicks in after the car starts moving.
+        """
+        if not self._driving_interval:
+            return
+        driving = any(
+            str((vd or {}).get("basicVehicleStatus", {}).get("engineStatus", ""))
+            .strip()
+            .lower()
+            not in ("", "engine-off")
+            for vd in data.values()
+        )
+        if driving == self._driving_now:
+            return
+        self._driving_now = driving
+        target = self._driving_interval if driving else self._base_interval
+        self.update_interval = target
+        _LOGGER.debug(
+            "Zeekr polling interval -> %s (%s)",
+            target,
+            "driving" if driving else "idle",
+        )
+
     async def _async_update_data(self) -> dict[str, dict]:
         """Fetch data from API endpoint."""
         try:
@@ -261,6 +310,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:
+            self._apply_dynamic_interval(data)
             return data
 
     async def async_inc_invoke(self):

@@ -25,6 +25,7 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -62,6 +63,21 @@ def _journey_last_duration(data: dict) -> int | None:
     if start and end:
         return round((end - start) / 60000)
     return None
+
+
+def _to_float(value):
+    """Return value as float, or None for empty/None/non-numeric input.
+
+    The vehicle status API reports many fields as strings that are empty ("")
+    or null while the car is parked (e.g. discharge current/voltage, heading).
+    Returning None keeps those sensors unavailable instead of raising.
+    """
+    if value is None or value == "":
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def get_tire_position_label(api_position: str, drive_side: str) -> str:
@@ -302,18 +318,19 @@ async def async_setup_entry(
                 )
             )
 
-        # BMS diagnostic sensors (raw API values from Zeekr Connected API)
+        # BMS diagnostic sensors for dynamic range bands reported by the API.
         entities.append(
             ZeekrSensor(
                 coordinator,
                 vin,
                 "distance_to_empty_on_battery_20_soc",
-                "distanceToEmptyOnBattery20Soc",
+                "Dynamic Range Estimate Upper 80%",
                 lambda d: d.get("additionalVehicleStatus", {})
                 .get("electricVehicleStatus", {})
                 .get("distanceToEmptyOnBattery20Soc"),
                 UnitOfLength.KILOMETERS,
                 SensorDeviceClass.DISTANCE,
+                entity_category=EntityCategory.DIAGNOSTIC,
             )
         )
         entities.append(
@@ -321,12 +338,13 @@ async def async_setup_entry(
                 coordinator,
                 vin,
                 "distance_to_empty_on_battery_100_soc",
-                "distanceToEmptyOnBattery100Soc",
+                "Dynamic Range Estimate Lower 20%",
                 lambda d: d.get("additionalVehicleStatus", {})
                 .get("electricVehicleStatus", {})
                 .get("distanceToEmptyOnBattery100Soc"),
                 UnitOfLength.KILOMETERS,
                 SensorDeviceClass.DISTANCE,
+                entity_category=EntityCategory.DIAGNOSTIC,
             )
         )
         # Charging Status Sensors (only when charging)
@@ -382,6 +400,77 @@ async def async_setup_entry(
 
         # Formatted Charging Time Remaining Sensor
         entities.append(ZeekrChargingTimeFormattedSensor(coordinator, vin))
+
+        # Live driving telemetry from basicVehicleStatus (for ABRP).
+        # Values are 0/empty/null while parked; guarded via _to_float.
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "vehicle_speed",
+                "Vehicle Speed",
+                lambda d: _to_float(d.get("basicVehicleStatus", {}).get("speed")),
+                UnitOfSpeed.KILOMETERS_PER_HOUR,
+                SensorDeviceClass.SPEED,
+            )
+        )
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "heading",
+                "Heading",
+                lambda d: _to_float(
+                    d.get("basicVehicleStatus", {}).get("position", {}).get("direction")
+                ),
+                "°",
+                None,
+            )
+        )
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "elevation",
+                "Elevation",
+                lambda d: _to_float(
+                    d.get("basicVehicleStatus", {}).get("position", {}).get("altitude")
+                ),
+                UnitOfLength.METERS,
+                None,
+            )
+        )
+        # Instantaneous battery discharge (populates while driving; empty at rest).
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "discharge_current",
+                "Discharge Current",
+                lambda d: _to_float(
+                    d.get("additionalVehicleStatus", {})
+                    .get("electricVehicleStatus", {})
+                    .get("disChargeIAct")
+                ),
+                UnitOfElectricCurrent.AMPERE,
+                SensorDeviceClass.CURRENT,
+            )
+        )
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "discharge_voltage",
+                "Discharge Voltage",
+                lambda d: _to_float(
+                    d.get("additionalVehicleStatus", {})
+                    .get("electricVehicleStatus", {})
+                    .get("disChargeUAct")
+                ),
+                UnitOfElectricPotential.VOLT,
+                SensorDeviceClass.VOLTAGE,
+            )
+        )
 
         # Status sensors
         entities.append(ZeekrVehicleStatusSensor(coordinator, vin))
@@ -494,6 +583,7 @@ class ZeekrSensor(CoordinatorEntity, SensorEntity):
         unit: str | None = None,
         device_class: SensorDeviceClass | None = None,
         state_class: SensorStateClass | None = SensorStateClass.MEASUREMENT,
+        entity_category: EntityCategory | None = None,
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -505,6 +595,7 @@ class ZeekrSensor(CoordinatorEntity, SensorEntity):
         self._attr_native_unit_of_measurement = unit
         self._attr_device_class = device_class
         self._attr_state_class = state_class
+        self._attr_entity_category = entity_category
 
     @property
     def native_value(self):

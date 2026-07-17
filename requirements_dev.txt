@@ -1,2 +1,6 @@
 -r requirements.txt
-homeassistant
+homeassistant==2026.6.2
+h11>=0.16.0
+PyYAML>=6.0.3
+
+uv==0.11.16

@@ -16,10 +16,30 @@ from .const import (
 _LOGGER = logging.getLogger(__name__)
 
 
-def get_api_version(client: object) -> str | None:
-    """Return the zeekr_ev_api version in use for this coordinator client."""
-    module_name = getattr(client.__class__, "__module__", "")
+# Cache the resolved version per client module. Resolving it via
+# importlib.metadata does blocking file I/O, and entity device_info reads it
+# synchronously in the event loop — so it must be resolved at most once and,
+# ideally, primed off-loop (see async_setup_entry) before any device_info runs.
+_API_VERSION_CACHE: dict[str, "str | None"] = {}
 
+
+def get_api_version(client: object) -> str | None:
+    """Return the zeekr_ev_api version in use for this coordinator client.
+
+    Cached: safe to call from a synchronous device_info property without hitting
+    disk. Prime the cache once off the event loop via
+    hass.async_add_executor_job(get_api_version, client) during setup.
+    """
+    module_name = getattr(client.__class__, "__module__", "")
+    if module_name in _API_VERSION_CACHE:
+        return _API_VERSION_CACHE[module_name]
+    version = _resolve_api_version(module_name)
+    _API_VERSION_CACHE[module_name] = version
+    return version
+
+
+def _resolve_api_version(module_name: str) -> str | None:
+    """Resolve the version (may do blocking I/O — call off the event loop)."""
     if module_name.startswith("custom_components.zeekr_ev_api"):
         try:
             local_module = importlib.import_module("custom_components.zeekr_ev_api")

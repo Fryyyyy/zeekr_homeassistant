@@ -1,5 +1,17 @@
 -r requirements_dev.txt
 pytest
-pytest-homeassistant-custom-component
+pytest-homeassistant-custom-component==0.13.338
 pytest-cov
 pytest-asyncio
+
+# Security (Aikido / CVE-2025-43859): force the patched h11 explicitly in the
+# file Aikido scans. h11>=0.16.0 is already inherited via requirements_dev.txt;
+# this line makes the constraint visible to SCA scanners reading this file directly.
+h11>=0.16.0
+
+# NOTE: numpy timedelta64->string OOB write (AIKIDO-2026-795744) is fixed in
+# numpy 2.4.5, but the pinned HA test stack (pytest-homeassistant-custom-component
+# ==0.13.338 / homeassistant==2026.6.2) caps numpy below 2.4.5, so the patched
+# version cannot be installed without upgrading Home Assistant. numpy is a
+# test-only, non-reachable dependency here (the vulnerable timedelta->narrow-string
+# cast is never exercised), so it is intentionally left un-pinned pending an HA bump.

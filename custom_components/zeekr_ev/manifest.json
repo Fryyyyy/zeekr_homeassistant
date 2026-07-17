@@ -11,5 +11,5 @@
   "requirements": [
     "zeekr_ev_api>=0.1.14"
   ],
-  "version": "20260626"
+  "version": "0.3.8"
 }

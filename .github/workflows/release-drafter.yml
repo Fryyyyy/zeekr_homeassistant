@@ -1,12 +1,15 @@
 name: Draft a release note
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
 jobs:
   draft_release:
     name: Release Drafter
     runs-on: ubuntu-latest
     steps:
       - name: Run release-drafter
-        uses: release-drafter/release-drafter@v7.5.1
+        uses: release-drafter/release-drafter@e1247478eabc9f6d9cf5ec2b3547469b0e1d2767 # v7.3.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

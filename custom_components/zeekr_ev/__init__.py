@@ -32,6 +32,7 @@ from .const import (
 )
 from .coordinator import ZeekrCoordinator
 from .request_stats import ZeekrRequestStats
+from .utils import get_api_version
 
 _LOGGER: logging.Logger = logging.getLogger(__package__)
 
@@ -154,12 +155,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
+    # Prime the api-version cache off the event loop so entity device_info
+    # (a sync property) never does blocking file I/O in the loop.
+    await hass.async_add_executor_job(get_api_version, client)
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Register services (only once)
     await async_setup_services(hass)
 
-    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    # NOTE: no add_update_listener here. The options flow reloads the entry
+    # explicitly via hass.config_entries.async_reload(); adding a reload update
+    # listener as well caused a double reload that raced the unload and crashed
+    # with "Config entry was never loaded!" on every platform.
     return True
 
 
