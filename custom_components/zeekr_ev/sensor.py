@@ -780,7 +780,12 @@ class ZeekrJourneyLogSensor(CoordinatorEntity, SensorEntity):
         """Return number of loaded trips."""
         data = self.coordinator.data.get(self.vin, {})
         journey_log = data.get("journeyLog", {})
-        trips = journey_log.get("data", [])
+        # The API sometimes returns {"data": null} (e.g. zero trips on record)
+        # instead of omitting the key or returning []. dict.get(key, default)
+        # only applies the default when the key is *absent*, so an explicit
+        # null still comes back as None here and len(None) raises TypeError.
+        # Match the same "or []" guard already used by _latest_journey_trip().
+        trips = journey_log.get("data") or []
         return len(trips)
 
     @property
