@@ -475,3 +475,18 @@ def test_journey_log_attributes_empty_when_no_trips():
     coordinator = DummyCoordinator({"VIN1": _journey_data([], total=0)})
     sensor = ZeekrJourneyLogSensor(coordinator, "VIN1")
     assert sensor.extra_state_attributes == {}
+
+
+def test_journey_log_native_value_zero_when_data_key_missing():
+    coordinator = DummyCoordinator({"VIN1": _journey_data([], total=0)})
+    sensor = ZeekrJourneyLogSensor(coordinator, "VIN1")
+    assert sensor.native_value == 0
+
+
+def test_journey_log_native_value_zero_when_data_is_null():
+    """Regression test: API can return {"data": null} instead of {"data": []}
+    (observed on accounts/vehicles with zero recorded trips). native_value
+    must not raise TypeError('object of type NoneType has no len()')."""
+    coordinator = DummyCoordinator({"VIN1": {"journeyLog": {"total": 0, "data": None}}})
+    sensor = ZeekrJourneyLogSensor(coordinator, "VIN1")
+    assert sensor.native_value == 0
