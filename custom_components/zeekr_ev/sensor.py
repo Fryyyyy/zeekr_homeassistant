@@ -430,7 +430,13 @@ async def async_setup_entry(
                 SensorStateClass.MEASUREMENT,
             )
         )
-        # Journey Log Last Regeneration
+        # Journey Log Last Regeneration (absolute Wh recovered on the last trip —
+        # e.g. 560 Wh on a 4 km trip; read as a rate it would be an implausibly
+        # small ~5 Wh/100km, so this is energy, not a per-distance figure). It is
+        # a per-trip snapshot, not a cumulative meter, so HA rejects the `energy`
+        # device_class with state_class `measurement`. Leave the device_class
+        # unset (like Last Consumption above) and keep MEASUREMENT for per-trip
+        # statistics.
         entities.append(
             ZeekrSensor(
                 coordinator,
@@ -439,11 +445,7 @@ async def async_setup_entry(
                 "Journey Log Last Regeneration",
                 lambda d: _latest_journey_trip(d).get("electricRegeneration"),
                 "Wh",
-                SensorDeviceClass.ENERGY,
-                # Absolute Wh recovered per trip (e.g. 560 Wh on a 4 km trip) —
-                # read as a rate it would be an implausibly small ~5 Wh/100km, so
-                # this is energy, not a per-distance figure. MEASUREMENT records
-                # per-trip statistics.
+                None,
                 SensorStateClass.MEASUREMENT,
             )
         )
