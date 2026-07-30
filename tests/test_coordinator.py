@@ -367,3 +367,147 @@ async def test_coordinator_resets_stale_count_on_successful_poll():
     finally:
         if coordinator._unsub_reset:
             coordinator._unsub_reset()
+
+
+def _coordinator_with_vehicle(vehicle):
+    """Build a coordinator wired to a single mock vehicle, stats stubbed out."""
+    client = MockClient([vehicle])
+    hass = DummyHass()
+
+    with patch("homeassistant.helpers.update_coordinator.DataUpdateCoordinator.__init__", side_effect=mock_data_update_coordinator_init, autospec=True):
+        coordinator = ZeekrCoordinator(hass, client, DummyConfig())
+
+    coordinator.request_stats = MagicMock()
+    coordinator.request_stats.async_load = AsyncMock()
+    coordinator.request_stats.async_inc_request = AsyncMock()
+    return coordinator
+
+
+def _vehicle_with_journey_log(vin="VIN1"):
+    """A mock vehicle whose secondary fetches all succeed, journey log included.
+
+    get_status uses a side_effect so every poll gets a *fresh* dict, the way the
+    real client does. A shared return_value dict would be mutated in place by
+    the coordinator and leak the previous poll's keys into the next one.
+    """
+    vehicle = MockVehicle(vin)
+    vehicle.get_status.side_effect = lambda: {}
+    vehicle.get_remote_control_state.return_value = {"remote": "ok"}
+    vehicle.get_charging_status.return_value = {"status": "ok"}
+    vehicle.get_charging_limit.return_value = {"soc": "800"}
+    vehicle.get_charge_plan.return_value = {"startTime": "00:00"}
+    vehicle.get_travel_plan.return_value = {"scheduledTime": "1700000000000"}
+    vehicle.get_journey_log = MagicMock(return_value=[{"tripId": "1"}])
+    return vehicle
+
+
+@pytest.mark.asyncio
+async def test_secondary_fetch_carries_forward_on_empty_poll():
+    """An empty journey-log poll keeps the previous value instead of dropping it."""
+    vin = "VIN1"
+    vehicle = _vehicle_with_journey_log(vin)
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        _, first = await coordinator._async_update_vehicle(vehicle)
+        assert first["journeyLog"] == [{"tripId": "1"}]
+
+        # The endpoint intermittently answers with an empty list.
+        vehicle.get_journey_log.return_value = []
+        _, second = await coordinator._async_update_vehicle(vehicle)
+        assert second["journeyLog"] == [{"tripId": "1"}]
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_secondary_fetch_carry_forward_is_bounded():
+    """After MAX_STALE_UPDATES empty polls the key drops rather than going stale forever."""
+    from custom_components.zeekr_ev.coordinator import MAX_STALE_UPDATES
+
+    vin = "VIN1"
+    vehicle = _vehicle_with_journey_log(vin)
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        await coordinator._async_update_vehicle(vehicle)
+
+        vehicle.get_journey_log.return_value = []
+        for _ in range(MAX_STALE_UPDATES):
+            _, data = await coordinator._async_update_vehicle(vehicle)
+            assert data["journeyLog"] == [{"tripId": "1"}]
+
+        _, data = await coordinator._async_update_vehicle(vehicle)
+        assert "journeyLog" not in data
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_secondary_fetch_stale_streak_resets_on_success():
+    """A good poll resets the streak, so an alternating endpoint never expires."""
+    from custom_components.zeekr_ev.coordinator import MAX_STALE_UPDATES
+
+    vin = "VIN1"
+    vehicle = _vehicle_with_journey_log(vin)
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        await coordinator._async_update_vehicle(vehicle)
+
+        # This is the observed real-world pattern: fail, recover, fail, recover.
+        for _ in range(MAX_STALE_UPDATES * 3):
+            vehicle.get_journey_log.return_value = []
+            _, data = await coordinator._async_update_vehicle(vehicle)
+            assert data["journeyLog"] == [{"tripId": "1"}]
+
+            vehicle.get_journey_log.return_value = [{"tripId": "1"}]
+            _, data = await coordinator._async_update_vehicle(vehicle)
+            assert data["journeyLog"] == [{"tripId": "1"}]
+            assert (vin, "journeyLog") not in coordinator._secondary_stale_count
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_carry_forward_does_not_clobber_fresh_primary_status():
+    """Carried-forward chargingStatus must not overwrite fresh primary-status fields."""
+    vin = "VIN1"
+    vehicle = _vehicle_with_journey_log(vin)
+    vehicle.get_status.side_effect = lambda: {"chargingStatus": {"soc": "50"}}
+    vehicle.get_charging_status.return_value = {"plugState": "1"}
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        _, first = await coordinator._async_update_vehicle(vehicle)
+        assert first["chargingStatus"] == {"soc": "50", "plugState": "1"}
+
+        # Primary status moves on while the secondary fetch comes back empty.
+        vehicle.get_status.side_effect = lambda: {"chargingStatus": {"soc": "72"}}
+        vehicle.get_charging_status.return_value = {}
+        _, second = await coordinator._async_update_vehicle(vehicle)
+
+        # The fresh SoC survives; only the secondary fetch's own field is held.
+        assert second["chargingStatus"] == {"soc": "72", "plugState": "1"}
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_no_carry_forward_without_a_previous_value():
+    """An endpoint that has never answered stays absent — nothing to carry."""
+    vin = "VIN1"
+    vehicle = _vehicle_with_journey_log(vin)
+    vehicle.get_journey_log.return_value = []
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        _, data = await coordinator._async_update_vehicle(vehicle)
+        assert "journeyLog" not in data
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
