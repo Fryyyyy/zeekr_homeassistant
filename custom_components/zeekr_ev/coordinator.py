@@ -33,6 +33,16 @@ _LOGGER = logging.getLogger(__name__)
 MAX_STALE_UPDATES = 3
 
 
+def _payload(value, types) -> object | None:
+    """Normalise an asyncio.gather() result to its payload, or None.
+
+    gather(return_exceptions=True) hands back either the fetch's return value or
+    the exception it raised, and a fetch that failed softly returns None or an
+    empty container. All of those mean "no data this poll".
+    """
+    return value if isinstance(value, types) and value else None
+
+
 class ZeekrCoordinator(DataUpdateCoordinator):
     """Class to manage fetching Zeekr data."""
 
@@ -55,6 +65,12 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         # Count of consecutive failed status polls per VIN, so carry-forward of
         # stale data is bounded (see MAX_STALE_UPDATES).
         self._stale_count: dict[str, int] = {}
+        # Last successful payload of each secondary fetch, per VIN, plus the
+        # matching consecutive-failure counters. Kept as the raw per-endpoint
+        # response rather than a slice of the merged vehicle_data, so carrying a
+        # value forward can never clobber fresh primary-status fields.
+        self._last_secondary: dict[str, dict[str, object]] = {}
+        self._secondary_stale_count: dict[tuple[str, str], int] = {}
         polling_interval = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL)
         super().__init__(
             hass,
@@ -209,28 +225,93 @@ class ZeekrCoordinator(DataUpdateCoordinator):
 
         remote_state, charging_status, charging_limit, charge_plan, travel_plan, journey_log = results
 
-        # Process results
-        if isinstance(remote_state, dict) and remote_state:
+        # Process results. Each secondary fetch is best-effort, so a single bad
+        # response would otherwise leave its key out of this poll's data and
+        # flip every entity reading it to unknown (or 0) until the next good
+        # poll. The journey log endpoint does this every few minutes on a parked
+        # car, making its six sensors flap constantly. Hold the last-known value
+        # instead, bounded per endpoint by the same MAX_STALE_UPDATES budget the
+        # primary status fetch uses so a dead endpoint still surfaces.
+        remote_state = self._fresh_or_last_known(
+            vehicle.vin, "remoteControlState", _payload(remote_state, dict)
+        )
+        charging_status = self._fresh_or_last_known(
+            vehicle.vin, "chargingStatus", _payload(charging_status, dict)
+        )
+        charging_limit = self._fresh_or_last_known(
+            vehicle.vin, "chargingLimit", _payload(charging_limit, dict)
+        )
+        charge_plan = self._fresh_or_last_known(
+            vehicle.vin, "chargePlan", _payload(charge_plan, dict)
+        )
+        travel_plan = self._fresh_or_last_known(
+            vehicle.vin, "travelPlan", _payload(travel_plan, dict)
+        )
+        journey_log = self._fresh_or_last_known(
+            vehicle.vin, "journeyLog", _payload(journey_log, (list, dict))
+        )
+
+        if remote_state:
             vehicle_data.setdefault("additionalVehicleStatus", {})[
                 "remoteControlState"
             ] = remote_state
 
-        if isinstance(charging_status, dict) and charging_status:
+        if charging_status:
             vehicle_data.setdefault("chargingStatus", {}).update(charging_status)
 
-        if isinstance(charging_limit, dict) and charging_limit:
+        if charging_limit:
             vehicle_data["chargingLimit"] = charging_limit
 
-        if isinstance(charge_plan, dict) and charge_plan:
+        if charge_plan:
             vehicle_data["chargePlan"] = charge_plan
 
-        if isinstance(travel_plan, dict) and travel_plan:
+        if travel_plan:
             vehicle_data["travelPlan"] = travel_plan
 
-        if isinstance(journey_log, (list, dict)) and journey_log:
+        if journey_log:
             vehicle_data["journeyLog"] = journey_log
 
         return vehicle.vin, vehicle_data
+
+    def _fresh_or_last_known(self, vin: str, name: str, value: object | None):
+        """Return this poll's payload, or the last-known one if it came up empty.
+
+        Carry-forward is bounded per (VIN, endpoint): after MAX_STALE_UPDATES
+        consecutive empty polls we stop holding the value, so an endpoint that
+        genuinely went away still drops out instead of being served forever.
+        """
+        key = (vin, name)
+        if value is not None:
+            self._last_secondary.setdefault(vin, {})[name] = value
+            self._secondary_stale_count.pop(key, None)
+            return value
+
+        previous = self._last_secondary.get(vin, {}).get(name)
+        if previous is None:
+            return None
+
+        stale_count = self._secondary_stale_count.get(key, 0) + 1
+        if stale_count > MAX_STALE_UPDATES:
+            _LOGGER.warning(
+                "%s fetch for %s has returned no data for %d consecutive polls; "
+                "dropping it rather than serving stale data",
+                name,
+                vin,
+                stale_count - 1,
+            )
+            self._last_secondary.get(vin, {}).pop(name, None)
+            self._secondary_stale_count.pop(key, None)
+            return None
+
+        self._secondary_stale_count[key] = stale_count
+        _LOGGER.debug(
+            "%s fetch for %s returned no data; serving last-known value [%d/%d]",
+            name,
+            vin,
+            stale_count,
+            MAX_STALE_UPDATES,
+        )
+        return previous
 
     async def _async_update_data(self) -> dict[str, dict]:
         """Fetch data from API endpoint."""
