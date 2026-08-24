@@ -46,6 +46,10 @@ def mock_config_entry():
             }
             self.entry_id = "test_entry_id"
             self.title = "Test Entry"
+            self.unload_callbacks = []
+
+        def async_on_unload(self, callback):
+            self.unload_callbacks.append(callback)
 
     return MockConfigEntry()
 

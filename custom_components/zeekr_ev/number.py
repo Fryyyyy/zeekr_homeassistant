@@ -3,17 +3,23 @@
 from __future__ import annotations
 
 import asyncio
+from math import isfinite
 
 from homeassistant.components.number import NumberEntity, RestoreNumber
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE, UnitOfTime
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, VTM_MAX_DURATION, VTM_MIN_DURATION
 from .coordinator import ZeekrCoordinator
-from .entity import ZeekrEntity
+from .entity import (
+    setup_refrigeration_box_discovery,
+    ZeekrEntity,
+    ZeekrRefrigerationBoxEntity,
+)
 
 
 async def async_setup_entry(
@@ -48,9 +54,15 @@ async def async_setup_entry(
             "steering_wheel_duration",
         ),
     ]
-
     for vehicle in coordinator.vehicles:
         entities.append(ZeekrChargingLimitNumber(coordinator, vehicle.vin))
+    setup_refrigeration_box_discovery(
+        coordinator,
+        entry,
+        async_add_entities,
+        entities,
+        ZeekrRefrigerationBoxDurationNumber,
+    )
 
     async_add_entities(entities)
 
@@ -186,3 +198,40 @@ class ZeekrChargingLimitNumber(ZeekrEntity, RestoreNumber):
             await self.coordinator.async_request_refresh()
 
         self.hass.async_create_task(_reconcile())
+
+
+class ZeekrRefrigerationBoxDurationNumber(
+    ZeekrRefrigerationBoxEntity,
+    NumberEntity,
+):
+    """Refrigeration-box run timer."""
+
+    _attr_name = "Refrigeration Box Timer"
+    _attr_icon = "mdi:timer-outline"
+    _attr_native_min_value = VTM_MIN_DURATION / 60
+    _attr_native_max_value = VTM_MAX_DURATION / 60
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = UnitOfTime.HOURS
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        """Initialise the refrigeration-box timer."""
+        super().__init__(coordinator, vin)
+        self._attr_unique_id = f"{vin}_refrigeration_box_timer"
+
+    @property
+    def native_value(self) -> float | None:
+        """Return the API duration in hours."""
+        _, setting = self._vtm_state()
+        return float(setting["duration"]) / 60 if setting else None
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Set the run timer while preserving all other VTM state."""
+        if (
+            not isfinite(value)
+            or not self.native_min_value <= value <= self.native_max_value
+        ):
+            raise HomeAssistantError(
+                f"Timer must be between {self.native_min_value:g} and "
+                f"{self.native_max_value:g} hours"
+            )
+        await self._async_write_vtm(duration=round(value * 60))

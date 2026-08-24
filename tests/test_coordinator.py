@@ -380,6 +380,8 @@ def _coordinator_with_vehicle(vehicle):
     coordinator.request_stats = MagicMock()
     coordinator.request_stats.async_load = AsyncMock()
     coordinator.request_stats.async_inc_request = AsyncMock()
+    coordinator._vtm_store = MagicMock()
+    coordinator._vtm_store.async_load = AsyncMock(return_value=None)
     return coordinator
 
 
@@ -508,6 +510,354 @@ async def test_no_carry_forward_without_a_previous_value():
     try:
         _, data = await coordinator._async_update_vehicle(vehicle)
         assert "journeyLog" not in data
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+def _vtm_status(temp="3.0", duration="1440"):
+    """Return a usable refrigeration-box status payload."""
+    return {
+        "activeStatus": "1",
+        "currentTemperature": "2.0",
+        "vtmTsActive": "false",
+        "vtmModel": {
+            "setting": [
+                {
+                    "temp": temp,
+                    "duration": duration,
+                }
+            ]
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_vtm_status_is_discovered_and_polled():
+    """A usable VTM response enables ongoing polling for that VIN."""
+    vehicle = _vehicle_with_journey_log()
+    vehicle.get_vtm_status = MagicMock(return_value=_vtm_status())
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        _, first = await coordinator._async_update_vehicle(vehicle)
+        _, second = await coordinator._async_update_vehicle(vehicle)
+
+        assert first["vtmStatus"] == _vtm_status()
+        assert second["vtmStatus"] == _vtm_status()
+        assert vehicle.get_vtm_status.call_count == 2
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_off_vtm_status_keeps_cached_setting():
+    """An off response keeps the last target and timer, not measured temperature."""
+    vehicle = _vehicle_with_journey_log()
+    vehicle.get_vtm_status = MagicMock(
+        side_effect=[
+            _vtm_status(temp="4.0", duration="1320"),
+            {"activeStatus": "0"},
+        ]
+    )
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        _, first = await coordinator._async_update_vehicle(vehicle)
+        _, second = await coordinator._async_update_vehicle(vehicle)
+
+        assert first["vtmStatus"]["activeStatus"] == "1"
+        assert second["vtmStatus"] == {
+            "activeStatus": "0",
+            "vtmTsActive": "false",
+            "vtmModel": {
+                "setting": [
+                    {
+                        "temp": "4.0",
+                        "duration": "1320",
+                    }
+                ]
+            },
+        }
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_off_vtm_status_prefers_fresh_setting_to_cache():
+    """Fresh off-state controls win when only the timer flag is omitted."""
+    vehicle = _vehicle_with_journey_log()
+    vehicle.get_vtm_status = MagicMock(
+        side_effect=[
+            _vtm_status(temp="4.0", duration="1320"),
+            {
+                "activeStatus": "0",
+                "vtmModel": {
+                    "setting": [{"temp": "5.0", "duration": "600"}]
+                },
+            },
+        ]
+    )
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        await coordinator._async_update_vehicle(vehicle)
+        _, second = await coordinator._async_update_vehicle(vehicle)
+
+        assert second["vtmStatus"]["vtmTsActive"] == "false"
+        assert second["vtmStatus"]["vtmModel"]["setting"][0] == {
+            "temp": "5.0",
+            "duration": "600",
+        }
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_vtm_setting_survives_coordinator_restart():
+    """Persisted controls let an off accessory be rediscovered after restart."""
+    first_vehicle = _vehicle_with_journey_log()
+    first_vehicle.get_vtm_status = MagicMock(
+        return_value=_vtm_status(temp="4.0", duration="1320")
+    )
+    first = _coordinator_with_vehicle(first_vehicle)
+
+    second_vehicle = _vehicle_with_journey_log()
+    second_vehicle.get_vtm_status = MagicMock(
+        return_value={"activeStatus": "0"}
+    )
+    second = _coordinator_with_vehicle(second_vehicle)
+
+    try:
+        await first._async_update_vehicle(first_vehicle)
+        saved = first._vtm_store.async_delay_save.call_args.args[0]()
+        second._vtm_store.async_load.return_value = saved
+
+        await second.async_init_stats()
+        _, data = await second._async_update_vehicle(second_vehicle)
+
+        assert data["vtmStatus"] == {
+            "activeStatus": "0",
+            "vtmTsActive": "false",
+            "vtmModel": {
+                "setting": [{"temp": "4.0", "duration": "1320"}]
+            },
+        }
+    finally:
+        for coordinator in (first, second):
+            if coordinator._unsub_reset:
+                coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_persisted_vtm_setting_keeps_probing_after_empty_responses():
+    """A previously fitted accessory remains eligible for later discovery."""
+    vehicle = _vehicle_with_journey_log()
+    vehicle.get_vtm_status = MagicMock(
+        side_effect=[{}, {}, {}, _vtm_status(temp="4.0", duration="1320")]
+    )
+    coordinator = _coordinator_with_vehicle(vehicle)
+    coordinator._vtm_store.async_load.return_value = {
+        vehicle.vin: _vtm_status(temp="4.0", duration="1320")
+    }
+
+    try:
+        await coordinator.async_init_stats()
+        results = [
+            await coordinator._async_update_vehicle(vehicle)
+            for _ in range(4)
+        ]
+
+        assert all("vtmStatus" not in data for _, data in results[:3])
+        assert results[3][1]["vtmStatus"] == _vtm_status(
+            temp="4.0", duration="1320"
+        )
+        assert vehicle.get_vtm_status.call_count == 4
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_initial_off_vtm_status_keeps_probing():
+    """An explicit off response is not evidence that the accessory is absent."""
+    vehicle = _vehicle_with_journey_log()
+    vehicle.get_vtm_status = MagicMock(return_value={"activeStatus": "0"})
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        results = [
+            await coordinator._async_update_vehicle(vehicle)
+            for _ in range(4)
+        ]
+
+        assert all("vtmStatus" not in data for _, data in results)
+        assert vehicle.get_vtm_status.call_count == 4
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "response",
+    [
+        {},
+        {"vtmModel": {"setting": []}},
+        {"vtmModel": {"setting": [{"temp": "unknown", "duration": "1440"}]}},
+        {
+            "vtmTsActive": "false",
+            "vtmModel": {"setting": [{"temp": "3.0", "duration": "1440"}]},
+        },
+        {
+            "activeStatus": "1",
+            "vtmModel": {"setting": [{"temp": "3.0", "duration": "1440"}]},
+        },
+        _vtm_status(temp="-16"),
+        _vtm_status(temp="21"),
+        _vtm_status(temp="51"),
+        _vtm_status(temp=True),
+        _vtm_status(duration="59"),
+        _vtm_status(duration="600.5"),
+        _vtm_status(duration="1441"),
+        _vtm_status(duration=True),
+    ],
+)
+async def test_unusable_initial_vtm_status_disables_after_three_polls(response):
+    """Three unusable responses opt that VIN out until reload."""
+    vehicle = _vehicle_with_journey_log()
+    vehicle.get_vtm_status = MagicMock(return_value=response)
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        results = [
+            await coordinator._async_update_vehicle(vehicle)
+            for _ in range(4)
+        ]
+
+        assert all("vtmStatus" not in data for _, data in results)
+        assert vehicle.get_vtm_status.call_count == 3
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_vtm_poll_holds_write_lock_until_update_is_ready():
+    """A pending whole-vehicle poll must not publish over a VTM write."""
+    vehicle = _vehicle_with_journey_log()
+    vehicle.get_vtm_status = MagicMock(return_value=_vtm_status())
+
+    def get_status():
+        return {}
+
+    vehicle.get_status = get_status
+    coordinator = _coordinator_with_vehicle(vehicle)
+    coordinator.vehicles = [vehicle]
+    status_started = asyncio.Event()
+    release_status = asyncio.Event()
+    write_acquired = asyncio.Event()
+    visible_data = None
+
+    async def executor(func, *args):
+        if func is get_status:
+            status_started.set()
+            await release_status.wait()
+        return func(*args)
+
+    coordinator.hass.async_add_executor_job = executor
+
+    async def take_write_lock():
+        nonlocal visible_data
+        lock = coordinator.vtm_locks.setdefault(vehicle.vin, asyncio.Lock())
+        async with lock:
+            visible_data = coordinator.data
+            write_acquired.set()
+
+    poll = asyncio.create_task(coordinator._async_update_data())
+    await status_started.wait()
+    write = asyncio.create_task(take_write_lock())
+    await asyncio.sleep(0)
+
+    try:
+        assert not write_acquired.is_set()
+    finally:
+        release_status.set()
+        await asyncio.gather(poll, write)
+        assert visible_data == poll.result()
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_failed_initial_vtm_probe_is_retried():
+    """A transient first-probe failure must not hide a fitted accessory."""
+    vehicle = _vehicle_with_journey_log()
+    vehicle.get_vtm_status = MagicMock(
+        side_effect=[Exception("API Error"), _vtm_status()]
+    )
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        _, first = await coordinator._async_update_vehicle(vehicle)
+        _, second = await coordinator._async_update_vehicle(vehicle)
+
+        assert "vtmStatus" not in first
+        assert second["vtmStatus"] == _vtm_status()
+        assert vehicle.get_vtm_status.call_count == 2
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_vtm_probe_error_breaks_unusable_response_streak():
+    """Only consecutive unusable responses opt a VIN out."""
+    vehicle = _vehicle_with_journey_log()
+    vehicle.get_vtm_status = MagicMock(
+        side_effect=[
+            {},
+            {},
+            Exception("API Error"),
+            {},
+            {},
+            _vtm_status(),
+        ]
+    )
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        results = [
+            await coordinator._async_update_vehicle(vehicle)
+            for _ in range(6)
+        ]
+
+        assert all("vtmStatus" not in data for _, data in results[:5])
+        assert results[5][1]["vtmStatus"] == _vtm_status()
+        assert vehicle.get_vtm_status.call_count == 6
+    finally:
+        if coordinator._unsub_reset:
+            coordinator._unsub_reset()
+
+
+@pytest.mark.asyncio
+async def test_vtm_status_carries_forward_after_discovery():
+    """A malformed later response uses the normal bounded stale-data path."""
+    vehicle = _vehicle_with_journey_log()
+    vehicle.get_vtm_status = MagicMock(
+        side_effect=[_vtm_status(), {"vtmModel": {"setting": []}}]
+    )
+    coordinator = _coordinator_with_vehicle(vehicle)
+
+    try:
+        _, first = await coordinator._async_update_vehicle(vehicle)
+        _, second = await coordinator._async_update_vehicle(vehicle)
+
+        assert second["vtmStatus"] == first["vtmStatus"]
+        assert coordinator._secondary_stale_count[("VIN1", "vtmStatus")] == 1
     finally:
         if coordinator._unsub_reset:
             coordinator._unsub_reset()
