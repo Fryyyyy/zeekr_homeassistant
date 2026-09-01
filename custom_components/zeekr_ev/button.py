@@ -31,6 +31,7 @@ async def async_setup_entry(
         entities.append(ZeekrForceUpdateButton(coordinator, vehicle.vin))
         entities.append(ZeekrFlashBlinkersButton(coordinator, vehicle.vin))
         entities.append(ZeekrHonkFlashButton(coordinator, vehicle.vin))
+        entities.append(ZeekrVentilateWindowsButton(coordinator, vehicle.vin))
         entities.append(ZeekrParkingComfortDisableButton(coordinator, vehicle.vin))
 
     async_add_entities(entities)
@@ -104,6 +105,42 @@ class ZeekrHonkFlashButton(ZeekrEntity, ButtonEntity):
             vehicle.do_remote_control, command, service_id, setting
         )
         _LOGGER.info("Honk horn and flash blinkers requested for vehicle %s", self.vin)
+
+
+class ZeekrVentilateWindowsButton(ZeekrEntity, ButtonEntity):
+    """Button to ventilate all windows."""
+
+    _attr_icon = "mdi:weather-windy"
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        """Initialize the button."""
+        super().__init__(coordinator, vin)
+        self._attr_name = "Ventilate Windows"
+        self._attr_unique_id = f"{vin}_ventilate_windows"
+
+    async def async_press(self) -> None:
+        """Handle the button press."""
+        vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
+        if not vehicle:
+            return
+
+        command = "start"
+        service_id = "RWS"
+        setting = {
+            "serviceParameters": [
+                {
+                    "key": "target",
+                    "value": "ventilate"
+                }
+            ]
+        }
+
+        await self.coordinator.async_inc_invoke()
+        await self.hass.async_add_executor_job(
+            vehicle.do_remote_control, command, service_id, setting
+        )
+        await self.coordinator.async_request_refresh()
+        _LOGGER.info("Window ventilation requested for vehicle %s", self.vin)
 
 
 class ZeekrParkingComfortDisableButton(ZeekrEntity, ButtonEntity):
