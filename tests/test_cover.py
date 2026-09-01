@@ -1,5 +1,7 @@
 from unittest.mock import MagicMock, AsyncMock
 import pytest
+from homeassistant.components.cover import CoverDeviceClass, CoverEntityFeature
+from custom_components.zeekr_ev.cover import ZeekrFrontHood
 from custom_components.zeekr_ev.cover import ZeekrSunshade, ZeekrWindows, ZeekrWindow, async_setup_entry
 from custom_components.zeekr_ev.const import DOMAIN
 
@@ -110,12 +112,13 @@ async def test_cover_async_setup_entry(hass, mock_config_entry):
     await async_setup_entry(hass, mock_config_entry, async_add_entities)
 
     assert async_add_entities.called
-    # Sunshade + All Windows + 4 Individual Windows = 6
-    assert len(async_add_entities.call_args[0][0]) == 6
+    # Sunshade + All Windows + 4 Individual Windows + Front Hood = 7
+    assert len(async_add_entities.call_args[0][0]) == 7
     entities = async_add_entities.call_args[0][0]
     assert isinstance(entities[0], ZeekrSunshade)
     assert isinstance(entities[1], ZeekrWindows)
     assert isinstance(entities[2], ZeekrWindow)
+    assert isinstance(entities[6], ZeekrFrontHood)
 
 
 @pytest.mark.asyncio
@@ -222,3 +225,59 @@ async def test_zeekr_window_readonly(hass):
     # Ensure no-op commands don't crash
     await window.async_open_cover()
     await window.async_close_cover()
+
+
+def test_front_hood_state_and_features():
+    vin = "VIN1"
+    safety_status = {"engineHoodOpenStatus": "0"}
+    coordinator = MockCoordinator(
+        {
+            vin: {
+                "additionalVehicleStatus": {
+                    "drivingSafetyStatus": safety_status
+                }
+            }
+        }
+    )
+    hood = ZeekrFrontHood(coordinator, vin)
+
+    assert hood.name == "Front Hood"
+    assert hood.unique_id == "VIN1_front_hood"
+    assert hood.device_class == CoverDeviceClass.DOOR
+    assert hood.supported_features == CoverEntityFeature.OPEN
+
+    for value, expected in (("0", True), ("1", False), ("2", None)):
+        safety_status["engineHoodOpenStatus"] = value
+        assert hood.is_closed is expected
+
+    safety_status.clear()
+    assert hood.is_closed is None
+
+
+@pytest.mark.asyncio
+async def test_front_hood_open_command(hass):
+    vin = "VIN1"
+    vehicle = MockVehicle(vin)
+    vehicle.do_remote_control = MagicMock(return_value=True)
+    coordinator = MockCoordinator({vin: {}})
+    coordinator.vehicles[vin] = vehicle
+    coordinator.async_request_refresh = AsyncMock()
+    hood = ZeekrFrontHood(coordinator, vin)
+    hood.hass = hass
+
+    await hood.async_open_cover()
+
+    coordinator.async_inc_invoke.assert_awaited_once()
+    vehicle.do_remote_control.assert_called_once_with(
+        "start",
+        "RDU",
+        {
+            "serviceParameters": [
+                {
+                    "key": "target",
+                    "value": "hood",
+                }
+            ]
+        },
+    )
+    coordinator.async_request_refresh.assert_awaited_once()

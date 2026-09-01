@@ -12,6 +12,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.typing import ConfigType
 import homeassistant.helpers.config_validation as cv
 
@@ -40,6 +41,11 @@ SERVICE_GET_TRIP_TRACKPOINTS = "get_trip_trackpoints"
 ATTR_VIN = "vin"
 ATTR_TRIP_ID = "trip_id"
 ATTR_TRIP_REPORT_TIME = "trip_report_time"
+
+LEGACY_FRONT_HOOD_ENTITIES = {
+    ("binary_sensor", "_hood_open"),
+    ("lock", "_engineHoodOpenStatus"),
+}
 
 # Service schema
 SERVICE_GET_TRIP_TRACKPOINTS_SCHEMA = vol.Schema(
@@ -79,6 +85,24 @@ def get_zeekr_client_class(use_local: bool = False):
 
 async def async_setup(hass: HomeAssistant, config: ConfigType):
     """Set up this integration using YAML is not supported."""
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Remove superseded front hood entities from the entity registry."""
+    if entry.version == 1 and entry.minor_version < 2:
+        registry = er.async_get(hass)
+        for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+            if entity.platform != DOMAIN:
+                continue
+            if any(
+                entity.domain == domain and entity.unique_id.endswith(unique_id_suffix)
+                for domain, unique_id_suffix in LEGACY_FRONT_HOOD_ENTITIES
+            ):
+                registry.async_remove(entity.entity_id)
+
+        hass.config_entries.async_update_entry(entry, minor_version=2)
+
     return True
 
 

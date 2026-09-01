@@ -110,7 +110,6 @@ async def async_setup_entry(
                 "Passenger rear door open",
             ),
             "trunk_open": ("trunkOpenStatus", "Trunk open"),
-            "hood_open": ("engineHoodOpenStatus", "Hood open"),
         }
 
         for key, (field_name, label) in door_fields.items():
