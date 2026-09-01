@@ -5,16 +5,29 @@ from __future__ import annotations
 import asyncio
 from datetime import timedelta, datetime
 import logging
+from math import isfinite
+from time import monotonic
 from typing import TYPE_CHECKING, Optional
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 import homeassistant.helpers.event as event
 
 
-from .const import CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL, DOMAIN
+from .const import (
+    CONF_POLLING_INTERVAL,
+    DEFAULT_POLLING_INTERVAL,
+    DOMAIN,
+    VTM_COOL_MAX_TEMP,
+    VTM_COOL_MIN_TEMP,
+    VTM_HEAT_MAX_TEMP,
+    VTM_HEAT_MIN_TEMP,
+    VTM_MAX_DURATION,
+    VTM_MIN_DURATION,
+)
 from .request_stats import ZeekrRequestStats
 
 if TYPE_CHECKING:
@@ -31,6 +44,8 @@ _LOGGER = logging.getLogger(__name__)
 # default 5-minute polling interval this is ~15 minutes of carry-forward, after
 # which the entities go unavailable so a sustained outage stays visible.
 MAX_STALE_UPDATES = 3
+VTM_SETTLE_SECONDS = 30
+VTM_STORAGE_VERSION = 1
 
 
 def _payload(value, types) -> object | None:
@@ -41,6 +56,125 @@ def _payload(value, types) -> object | None:
     empty container. All of those mean "no data this poll".
     """
     return value if isinstance(value, types) and value else None
+
+
+def get_vtm_setting(value: object) -> dict | None:
+    """Return a usable refrigeration-box setting, if present."""
+    if not isinstance(value, dict):
+        return None
+    if value.get("activeStatus") not in ("0", "1"):
+        return None
+    ts_active = value.get("vtmTsActive")
+    if (
+        not isinstance(ts_active, (str, bool))
+        or str(ts_active).lower() not in ("true", "false")
+    ):
+        return None
+    model = value.get("vtmModel")
+    if not isinstance(model, dict):
+        return None
+    settings = model.get("setting")
+    if not isinstance(settings, list) or not settings:
+        return None
+    setting = settings[0]
+    if not isinstance(setting, dict):
+        return None
+    try:
+        temp_value = setting["temp"]
+        duration_value = setting["duration"]
+        if isinstance(temp_value, bool) or isinstance(duration_value, bool):
+            return None
+        temp = float(temp_value)
+        duration = float(duration_value)
+        if not isfinite(temp) or not isfinite(duration):
+            return None
+        if not (
+            VTM_COOL_MIN_TEMP <= temp <= VTM_COOL_MAX_TEMP
+            or VTM_HEAT_MIN_TEMP <= temp <= VTM_HEAT_MAX_TEMP
+        ):
+            return None
+        if (
+            not duration.is_integer()
+            or not VTM_MIN_DURATION <= duration <= VTM_MAX_DURATION
+        ):
+            return None
+    except (KeyError, TypeError, ValueError):
+        return None
+    return setting
+
+
+def _cacheable_vtm_status(value: object) -> dict | None:
+    """Return only the controls needed to restart an off box."""
+    setting = get_vtm_setting(value)
+    if setting is None or not isinstance(value, dict):
+        return None
+    return {
+        "activeStatus": "0",
+        "vtmTsActive": value["vtmTsActive"],
+        "vtmModel": {
+            "setting": [
+                {
+                    "temp": setting["temp"],
+                    "duration": setting["duration"],
+                }
+            ]
+        },
+    }
+
+
+def _merge_vtm_off_status(value: object, cached: object) -> object:
+    """Fill a partial off response with the last usable controls."""
+    if (
+        get_vtm_setting(value) is not None
+        or not isinstance(value, dict)
+        or value.get("activeStatus") != "0"
+    ):
+        return value
+
+    setting = get_vtm_setting(cached)
+    if setting is None or not isinstance(cached, dict):
+        return value
+
+    status = value.copy()
+    status.setdefault("vtmTsActive", cached["vtmTsActive"])
+    if get_vtm_setting(status) is not None:
+        return status
+    model = status.get("vtmModel")
+    status["vtmModel"] = {
+        **(model if isinstance(model, dict) else {}),
+        "setting": [setting.copy()],
+    }
+    return status
+
+
+def _apply_vtm_pending(
+    pending_by_vin: dict[str, dict[str, tuple[str, float]]],
+    vin: str,
+    status: object,
+) -> dict | None:
+    """Overlay acknowledged fields until the backend confirms or times out."""
+    setting = get_vtm_setting(status)
+    pending = pending_by_vin.get(vin)
+    if setting is None or not pending:
+        return setting
+
+    assert isinstance(status, dict)
+    now = monotonic()
+    for field, (value, expires) in list(pending.items()):
+        target = status if field == "activeStatus" else setting
+        current = target[field]
+        confirmed = (
+            float(current) == float(value)
+            if field in ("temp", "duration")
+            else str(current) == value
+        )
+        if confirmed or now >= expires:
+            pending.pop(field)
+        else:
+            target[field] = value
+    if not pending:
+        pending_by_vin.pop(vin)
+    return setting
 
 
 class ZeekrCoordinator(DataUpdateCoordinator):
@@ -71,6 +205,19 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         # value forward can never clobber fresh primary-status fields.
         self._last_secondary: dict[str, dict[str, object]] = {}
         self._secondary_stale_count: dict[tuple[str, str], int] = {}
+        # Missing means probing, True means fitted, and False means three
+        # consecutive responses lacked usable refrigeration-box settings.
+        self._vtm_support: dict[str, bool] = {}
+        self._vtm_unusable_count: dict[str, int] = {}
+        self._vtm_store: Store[dict[str, dict]] = Store(
+            hass,
+            VTM_STORAGE_VERSION,
+            f"{DOMAIN}.{entry.entry_id}.vtm",
+        )
+        self._vtm_cache: dict[str, dict] = {}
+        self.vtm_locks: dict[str, asyncio.Lock] = {}
+        self._vtm_pending: dict[str, dict[str, tuple[str, float]]] = {}
+        self._vtm_reconcile_tasks: dict[str, asyncio.Task] = {}
         polling_interval = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL)
         super().__init__(
             hass,
@@ -91,8 +238,17 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         )
 
     async def async_init_stats(self):
-        """Initialize stats (load from storage)."""
+        """Load persistent coordinator state."""
         await self.request_stats.async_load()
+        stored = await self._vtm_store.async_load()
+        if isinstance(stored, dict):
+            self._vtm_cache = {
+                vin: cached
+                for vin, value in stored.items()
+                if isinstance(vin, str)
+                and (cached := _cacheable_vtm_status(value)) is not None
+            }
+            self._vtm_support.update(dict.fromkeys(self._vtm_cache, True))
 
     async def _handle_daily_reset(self, now):
         await self.request_stats.async_reset_today()
@@ -103,6 +259,14 @@ class ZeekrCoordinator(DataUpdateCoordinator):
             if vehicle.vin == vin:
                 return vehicle
         return None
+
+    def _cache_vtm_status(self, vin: str, status: object) -> None:
+        """Remember controls across partial off responses and HA restarts."""
+        cached = _cacheable_vtm_status(status)
+        if cached is None or self._vtm_cache.get(vin) == cached:
+            return
+        self._vtm_cache[vin] = cached
+        self._vtm_store.async_delay_save(lambda: self._vtm_cache, 1)
 
     async def _async_update_vehicle(self, vehicle: Vehicle) -> tuple[str, dict] | None:
         """Fetch data for a single vehicle."""
@@ -212,6 +376,46 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 _LOGGER.debug("Error fetching journey log for %s: %s", vehicle.vin, e)
                 return None
 
+        async def fetch_vtm_status():
+            if (
+                self._vtm_support.get(vehicle.vin) is False
+                or not hasattr(vehicle, "get_vtm_status")
+            ):
+                return None
+            try:
+                await self.request_stats.async_inc_request()
+                value = await self.hass.async_add_executor_job(
+                    vehicle.get_vtm_status
+                )
+            except Exception as e:
+                self._vtm_unusable_count.pop(vehicle.vin, None)
+                _LOGGER.debug("Error fetching VTM status for %s: %s", vehicle.vin, e)
+                return None
+
+            value = _merge_vtm_off_status(
+                value,
+                self._last_secondary.get(vehicle.vin, {}).get("vtmStatus")
+                or self._vtm_cache.get(vehicle.vin),
+            )
+            if _apply_vtm_pending(
+                self._vtm_pending, vehicle.vin, value
+            ) is not None:
+                self._vtm_support[vehicle.vin] = True
+                self._vtm_unusable_count.pop(vehicle.vin, None)
+                self._cache_vtm_status(vehicle.vin, value)
+                return value
+            if isinstance(value, dict) and value.get("activeStatus") == "0":
+                self._vtm_unusable_count.pop(vehicle.vin, None)
+                return None
+            if vehicle.vin not in self._vtm_support:
+                count = self._vtm_unusable_count.get(vehicle.vin, 0) + 1
+                if count >= MAX_STALE_UPDATES:
+                    self._vtm_support[vehicle.vin] = False
+                    self._vtm_unusable_count.pop(vehicle.vin, None)
+                else:
+                    self._vtm_unusable_count[vehicle.vin] = count
+            return None
+
         # Execute parallel tasks
         results = await asyncio.gather(
             fetch_remote_control_state(),
@@ -220,10 +424,19 @@ class ZeekrCoordinator(DataUpdateCoordinator):
             fetch_charge_plan(),
             fetch_travel_plan(),
             fetch_journey_log(),
+            fetch_vtm_status(),
             return_exceptions=True
         )
 
-        remote_state, charging_status, charging_limit, charge_plan, travel_plan, journey_log = results
+        (
+            remote_state,
+            charging_status,
+            charging_limit,
+            charge_plan,
+            travel_plan,
+            journey_log,
+            vtm_status,
+        ) = results
 
         # Process results. Each secondary fetch is best-effort, so a single bad
         # response would otherwise leave its key out of this poll's data and
@@ -250,6 +463,10 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         journey_log = self._fresh_or_last_known(
             vehicle.vin, "journeyLog", _payload(journey_log, (list, dict))
         )
+        if self._vtm_support.get(vehicle.vin):
+            vtm_status = self._fresh_or_last_known(
+                vehicle.vin, "vtmStatus", _payload(vtm_status, dict)
+            )
 
         if remote_state:
             vehicle_data.setdefault("additionalVehicleStatus", {})[
@@ -270,6 +487,9 @@ class ZeekrCoordinator(DataUpdateCoordinator):
 
         if journey_log:
             vehicle_data["journeyLog"] = journey_log
+
+        if vtm_status:
+            vehicle_data["vtmStatus"] = vtm_status
 
         return vehicle.vin, vehicle_data
 
@@ -315,6 +535,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
 
     async def _async_update_data(self) -> dict[str, dict]:
         """Fetch data from API endpoint."""
+        acquired_vtm_locks: list[asyncio.Lock] = []
         try:
             # Refresh vehicle list if empty (first run)
             if not self.vehicles:
@@ -322,6 +543,12 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 self.vehicles = await self.hass.async_add_executor_job(
                     self.client.get_vehicle_list
                 )
+
+            # Keep writes out until the complete poll snapshot is ready to publish.
+            for vehicle in self.vehicles:
+                lock = self.vtm_locks.setdefault(vehicle.vin, asyncio.Lock())
+                await lock.acquire()
+                acquired_vtm_locks.append(lock)
 
             # Update all vehicles in parallel
             tasks = [self._async_update_vehicle(vehicle) for vehicle in self.vehicles]
@@ -342,7 +569,11 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
         else:
+            self.data = data
             return data
+        finally:
+            for lock in reversed(acquired_vtm_locks):
+                lock.release()
 
     async def async_inc_invoke(self):
         await self.request_stats.async_inc_invoke()

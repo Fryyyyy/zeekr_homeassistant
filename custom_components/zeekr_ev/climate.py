@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from math import isfinite
 from typing import Any
 
 from homeassistant.components.climate import (
@@ -14,11 +15,24 @@ from homeassistant.components.climate import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTemperature
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import (
+    DOMAIN,
+    VTM_COOL_DEFAULT_TEMP,
+    VTM_COOL_MAX_TEMP,
+    VTM_COOL_MIN_TEMP,
+    VTM_HEAT_DEFAULT_TEMP,
+    VTM_HEAT_MAX_TEMP,
+    VTM_HEAT_MIN_TEMP,
+)
 from .coordinator import ZeekrCoordinator
+from .entity import (
+    setup_refrigeration_box_discovery,
+    ZeekrRefrigerationBoxEntity,
+)
 
 
 async def async_setup_entry(
@@ -28,10 +42,16 @@ async def async_setup_entry(
 ) -> None:
     """Set up the climate platform."""
     coordinator: ZeekrCoordinator = hass.data[DOMAIN][entry.entry_id]
-    entities: list[ZeekrClimate] = []
-
-    for vin in coordinator.data:
-        entities.append(ZeekrClimate(coordinator, vin))
+    entities: list[ClimateEntity] = [
+        ZeekrClimate(coordinator, vin) for vin in coordinator.data
+    ]
+    setup_refrigeration_box_discovery(
+        coordinator,
+        entry,
+        async_add_entities,
+        entities,
+        ZeekrRefrigerationBoxClimate,
+    )
 
     async_add_entities(entities)
 
@@ -198,3 +218,122 @@ class ZeekrClimate(CoordinatorEntity, ClimateEntity):
             "name": f"Zeekr {self.vin}",
             "manufacturer": "Zeekr",
         }
+
+
+class ZeekrRefrigerationBoxClimate(
+    ZeekrRefrigerationBoxEntity,
+    ClimateEntity,
+):
+    """Control a fitted Zeekr refrigeration box."""
+
+    _attr_name = "Refrigeration Box"
+    _attr_icon = "mdi:fridge-outline"
+    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_target_temperature_step = 1
+    _attr_supported_features = (
+        ClimateEntityFeature.TARGET_TEMPERATURE
+        | ClimateEntityFeature.TURN_OFF
+        | ClimateEntityFeature.TURN_ON
+    )
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.COOL, HVACMode.HEAT]
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        """Initialise the refrigeration-box climate entity."""
+        super().__init__(coordinator, vin)
+        self._attr_unique_id = f"{vin}_refrigeration_box"
+
+    @property
+    def current_temperature(self) -> float | None:
+        """Return the measured box temperature."""
+        try:
+            status, _ = self._vtm_state()
+            value = status.get("currentTemperature") if status else None
+            temperature = float(value) if value is not None else None
+            return (
+                temperature
+                if temperature is not None and isfinite(temperature)
+                else None
+            )
+        except (AttributeError, TypeError, ValueError):
+            return None
+
+    @property
+    def target_temperature(self) -> float | None:
+        """Return the configured box temperature."""
+        _, setting = self._vtm_state()
+        return float(setting["temp"]) if setting else None
+
+    @property
+    def hvac_mode(self) -> HVACMode:
+        """Return off, cooling, or heating from the implicit target range."""
+        status, setting = self._vtm_state()
+        if status is None or setting is None or status.get("activeStatus") != "1":
+            return HVACMode.OFF
+        return (
+            HVACMode.HEAT
+            if float(setting["temp"]) >= VTM_HEAT_MIN_TEMP
+            else HVACMode.COOL
+        )
+
+    def _temperature_range(self) -> tuple[float, float]:
+        """Return target bounds for the current implicit mode."""
+        _, setting = self._vtm_state()
+        heating = (
+            setting is not None
+            and float(setting["temp"]) >= VTM_HEAT_MIN_TEMP
+        )
+        return (
+            (VTM_HEAT_MIN_TEMP, VTM_HEAT_MAX_TEMP)
+            if heating
+            else (VTM_COOL_MIN_TEMP, VTM_COOL_MAX_TEMP)
+        )
+
+    @property
+    def min_temp(self) -> float:
+        """Return the lower bound for the target's implicit mode."""
+        return self._temperature_range()[0]
+
+    @property
+    def max_temp(self) -> float:
+        """Return the upper bound for the target's implicit mode."""
+        return self._temperature_range()[1]
+
+    async def async_turn_on(self) -> None:
+        """Turn on with the cached target and timer."""
+        await self._async_write_vtm(active=True)
+
+    async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+        """Set refrigeration-box power and implicit operating mode."""
+        if hvac_mode == HVACMode.OFF:
+            await self._async_write_vtm(active=False)
+            return
+
+        if hvac_mode == HVACMode.COOL:
+            temp_mode = (
+                VTM_COOL_MIN_TEMP,
+                VTM_COOL_MAX_TEMP,
+                VTM_COOL_DEFAULT_TEMP,
+            )
+        elif hvac_mode == HVACMode.HEAT:
+            temp_mode = (
+                VTM_HEAT_MIN_TEMP,
+                VTM_HEAT_MAX_TEMP,
+                VTM_HEAT_DEFAULT_TEMP,
+            )
+        else:
+            return
+        await self._async_write_vtm(temp_mode=temp_mode, active=True)
+
+    async def async_set_temperature(self, **kwargs: Any) -> None:
+        """Set the refrigeration-box target without changing power."""
+        if (temperature := kwargs.get("temperature")) is not None:
+            temperature = float(temperature)
+            minimum, maximum = self._temperature_range()
+            if (
+                not isfinite(temperature)
+                or not minimum <= temperature <= maximum
+            ):
+                raise HomeAssistantError(
+                    f"Temperature must be between {minimum} and {maximum} °C"
+                )
+            await self._async_write_vtm(temp=temperature)
