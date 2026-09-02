@@ -12,6 +12,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import ConfigEntryNotReady, HomeAssistantError
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.typing import ConfigType
 import homeassistant.helpers.config_validation as cv
 
@@ -50,6 +51,13 @@ SERVICE_GET_TRIP_TRACKPOINTS_SCHEMA = vol.Schema(
     }
 )
 
+# Entity registry entries superseded by the Front Hood cover (config entry 1.1 -> 1.2)
+# Format: (entity domain, unique_id suffix)
+LEGACY_FRONT_HOOD_ENTITIES = {
+    ("binary_sensor", "_hood_open"),
+    ("lock", "_engineHoodOpenStatus"),
+}
+
 
 def get_zeekr_client_class(use_local: bool = False):
     """Dynamically import ZeekrClient from local or installed package."""
@@ -79,6 +87,34 @@ def get_zeekr_client_class(use_local: bool = False):
 
 async def async_setup(hass: HomeAssistant, config: ConfigType):
     """Set up this integration using YAML is not supported."""
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrate old config entries."""
+    _LOGGER.debug(
+        "Migrating config entry from version %s.%s", entry.version, entry.minor_version
+    )
+
+    if entry.version == 1 and entry.minor_version < 2:
+        # 1.1 -> 1.2: the "Hood open" binary sensor and "Hood (closed = locked)" lock
+        # were replaced by the Front Hood cover, so drop their registry entries.
+        registry = er.async_get(hass)
+        for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+            if entity.platform != DOMAIN:
+                continue
+            if any(
+                entity.domain == domain and entity.unique_id.endswith(unique_id_suffix)
+                for domain, unique_id_suffix in LEGACY_FRONT_HOOD_ENTITIES
+            ):
+                _LOGGER.info(
+                    "Removing %s, superseded by the Front Hood cover", entity.entity_id
+                )
+                registry.async_remove(entity.entity_id)
+
+        hass.config_entries.async_update_entry(entry, minor_version=2)
+        _LOGGER.debug("Migration to config entry version 1.2 successful")
+
     return True
 
 

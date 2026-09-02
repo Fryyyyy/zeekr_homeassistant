@@ -35,7 +35,78 @@ async def async_setup_entry(
         for win in ["Driver", "Passenger", "DriverRear", "PassengerRear"]:
             entities.append(ZeekrWindow(coordinator, vin, win, f"Window {win}"))
 
+        entities.append(ZeekrFrontHood(coordinator, vin))
+
     async_add_entities(entities)
+
+
+class ZeekrFrontHood(CoordinatorEntity, CoverEntity):
+    """Zeekr Front Hood class (open only)."""
+
+    _attr_has_entity_name = True
+    _attr_device_class = CoverDeviceClass.DOOR
+    _attr_supported_features = CoverEntityFeature.OPEN
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        """Initialize the cover entity."""
+        super().__init__(coordinator)
+        self.vin = vin
+        self._attr_name = "Front Hood"
+        self._attr_unique_id = f"{vin}_front_hood"
+
+    @property
+    def is_closed(self) -> bool | None:
+        """Return if the front hood is closed."""
+        try:
+            val = (
+                self.coordinator.data.get(self.vin, {})
+                .get("additionalVehicleStatus", {})
+                .get("drivingSafetyStatus", {})
+                .get("engineHoodOpenStatus")
+            )
+            if val is None:
+                return None
+            # "0" is Closed, "1" is Open; anything else is unknown
+            if str(val) == "0":
+                return True
+            if str(val) == "1":
+                return False
+            return None
+        except (ValueError, TypeError, AttributeError):
+            return None
+
+    async def async_open_cover(self, **kwargs: Any) -> None:
+        """Open the front hood."""
+        vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
+        if not vehicle:
+            return
+
+        command = "start"
+        service_id = "RDU"
+        setting = {
+            "serviceParameters": [
+                {
+                    "key": "target",
+                    "value": "hood"
+                }
+            ]
+        }
+
+        await self.coordinator.async_inc_invoke()
+        await self.hass.async_add_executor_job(
+            vehicle.do_remote_control, command, service_id, setting
+        )
+        # No optimistic update; the reported state comes from the car
+        await self.coordinator.async_request_refresh()
+
+    @property
+    def device_info(self):
+        """Return device info."""
+        return {
+            "identifiers": {(DOMAIN, self.vin)},
+            "name": f"Zeekr {self.vin}",
+            "manufacturer": "Zeekr",
+        }
 
 
 class ZeekrSunshade(CoordinatorEntity, CoverEntity):
