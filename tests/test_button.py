@@ -124,7 +124,23 @@ async def test_ventilate_windows_button():
             ]
         }
     )
+    # Ventilating moves the windows, so the window covers are refreshed
     coordinator.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ventilate_windows_button_no_vehicle():
+    vin = "VIN1"
+    coordinator = MockCoordinator([])
+
+    button = ZeekrVentilateWindowsButton(coordinator, vin)
+    button.hass = DummyHass()
+
+    # Should safely return without sending a command
+    await button.async_press()
+
+    coordinator.async_inc_invoke.assert_not_called()
+    coordinator.async_request_refresh.assert_not_called()
 
 
 @pytest.mark.asyncio

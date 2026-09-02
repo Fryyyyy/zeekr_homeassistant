@@ -108,7 +108,7 @@ class ZeekrHonkFlashButton(ZeekrEntity, ButtonEntity):
 
 
 class ZeekrVentilateWindowsButton(ZeekrEntity, ButtonEntity):
-    """Button to ventilate all windows."""
+    """Button to Ventilate Windows."""
 
     _attr_icon = "mdi:weather-windy"
 
@@ -139,8 +139,10 @@ class ZeekrVentilateWindowsButton(ZeekrEntity, ButtonEntity):
         await self.hass.async_add_executor_job(
             vehicle.do_remote_control, command, service_id, setting
         )
-        await self.coordinator.async_request_refresh()
         _LOGGER.info("Window ventilation requested for vehicle %s", self.vin)
+
+        # Refresh so the window covers pick up the ventilated position
+        await self.coordinator.async_request_refresh()
 
 
 class ZeekrParkingComfortDisableButton(ZeekrEntity, ButtonEntity):
