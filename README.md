@@ -32,6 +32,12 @@ This is a custom integration for Zeekr Electric Vehicles for Home Assistant. It 
 3. Search for "Zeekr EV".
 4. Enter your Zeekr account email and password.
 
+### Operation durations
+
+AC, seat heating and ventilation, and steering wheel heating durations are stored locally in Home Assistant. They are not synchronized with the mobile app because the car does not report these settings. Each command uses the duration configured in the client that starts it.
+
+New entities default to 15 minutes for AC and seats, and 8 minutes for steering wheel heating. Existing Home Assistant values are carried over to every car during migration (a previous value of 0 becomes 1 minute, the new minimum) and may therefore differ from the mobile app defaults.
+
 ## Tips & Tricks
 
 - **Account**: Create a new account and share your car with the new account to avoid "The account is currently logged in elsewhere"

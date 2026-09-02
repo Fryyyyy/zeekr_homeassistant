@@ -1,5 +1,10 @@
 import asyncio
+from types import SimpleNamespace
+from unittest.mock import MagicMock
+
 import pytest
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import restore_state
 
 
 class DummyConfigEntries:
@@ -24,6 +29,14 @@ class DummyHass:
         self.config_entries = DummyConfigEntries()
         self.config = DummyConfig()
         self.loop = asyncio.get_event_loop()
+        # er.async_get / restore_state.async_get are @singleton accessors keyed on
+        # hass.data, so pre-seeding these keys short-circuits them and the number
+        # platform migration runs without a real Home Assistant. spec= makes a
+        # wrong registry method name raise instead of returning a truthy MagicMock.
+        registry = MagicMock(spec=er.EntityRegistry)
+        registry.async_get_entity_id.return_value = None
+        self.data[er.DATA_REGISTRY] = registry
+        self.data[restore_state.DATA_RESTORE_STATE] = SimpleNamespace(last_states={})
 
     async def async_add_executor_job(self, func, *args, **kwargs):
         # Run synchronous callable in test loop

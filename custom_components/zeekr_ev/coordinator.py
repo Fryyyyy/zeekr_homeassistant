@@ -190,10 +190,10 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         self.client = client
         self.entry = entry
         self.vehicles: list[Vehicle] = []
-        # Shared settings for command durations
-        self.seat_duration = 15
-        self.ac_duration = 15
-        self.steering_wheel_duration = 15
+        # Per-VIN command durations in minutes, {vin: {duration_key: n}}; seeded
+        # and updated by number.ZeekrConfigNumber (keys in number.CONFIG_NUMBERS),
+        # read by climate, select and switch when sending a command
+        self.operation_durations: dict[str, dict[str, int]] = {}
         self.request_stats = ZeekrRequestStats(hass)
         self.latest_poll_time: Optional[str] = None  # Track latest poll time
         # Count of consecutive failed status polls per VIN, so carry-forward of

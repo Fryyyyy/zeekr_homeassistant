@@ -16,8 +16,6 @@ class MockCoordinator:
     def __init__(self, data):
         self.data = data
         self.vehicles = {}
-        self.seat_duration = 15
-        self.ac_duration = 15
         self.async_inc_invoke = AsyncMock()
 
     def get_vehicle_by_vin(self, vin):
