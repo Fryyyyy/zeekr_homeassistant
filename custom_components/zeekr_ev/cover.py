@@ -41,7 +41,7 @@ async def async_setup_entry(
 
 
 class ZeekrFrontHood(CoordinatorEntity, CoverEntity):
-    """Front hood state and latch-release control."""
+    """Zeekr Front Hood class (open only)."""
 
     _attr_has_entity_name = True
     _attr_device_class = CoverDeviceClass.DOOR
@@ -56,23 +56,27 @@ class ZeekrFrontHood(CoordinatorEntity, CoverEntity):
 
     @property
     def is_closed(self) -> bool | None:
-        """Return whether the front hood is closed."""
-        value = (
-            self.coordinator.data.get(self.vin, {})
-            .get("additionalVehicleStatus", {})
-            .get("drivingSafetyStatus", {})
-            .get("engineHoodOpenStatus")
-        )
-        if value is None:
+        """Return if the front hood is closed."""
+        try:
+            val = (
+                self.coordinator.data.get(self.vin, {})
+                .get("additionalVehicleStatus", {})
+                .get("drivingSafetyStatus", {})
+                .get("engineHoodOpenStatus")
+            )
+            if val is None:
+                return None
+            # "0" is Closed, "1" is Open; anything else is unknown
+            if str(val) == "0":
+                return True
+            if str(val) == "1":
+                return False
             return None
-        if str(value) == "0":
-            return True
-        if str(value) == "1":
-            return False
-        return None
+        except (ValueError, TypeError, AttributeError):
+            return None
 
     async def async_open_cover(self, **kwargs: Any) -> None:
-        """Release the front hood latch."""
+        """Open the front hood."""
         vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
         if not vehicle:
             return
@@ -83,7 +87,7 @@ class ZeekrFrontHood(CoordinatorEntity, CoverEntity):
             "serviceParameters": [
                 {
                     "key": "target",
-                    "value": "hood",
+                    "value": "hood"
                 }
             ]
         }
@@ -92,6 +96,7 @@ class ZeekrFrontHood(CoordinatorEntity, CoverEntity):
         await self.hass.async_add_executor_job(
             vehicle.do_remote_control, command, service_id, setting
         )
+        # No optimistic update; the reported state comes from the car
         await self.coordinator.async_request_refresh()
 
     @property

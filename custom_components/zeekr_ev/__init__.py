@@ -42,11 +42,6 @@ ATTR_VIN = "vin"
 ATTR_TRIP_ID = "trip_id"
 ATTR_TRIP_REPORT_TIME = "trip_report_time"
 
-LEGACY_FRONT_HOOD_ENTITIES = {
-    ("binary_sensor", "_hood_open"),
-    ("lock", "_engineHoodOpenStatus"),
-}
-
 # Service schema
 SERVICE_GET_TRIP_TRACKPOINTS_SCHEMA = vol.Schema(
     {
@@ -55,6 +50,13 @@ SERVICE_GET_TRIP_TRACKPOINTS_SCHEMA = vol.Schema(
         vol.Required(ATTR_TRIP_REPORT_TIME): cv.positive_int,
     }
 )
+
+# Entity registry entries superseded by the Front Hood cover (config entry 1.1 -> 1.2)
+# Format: (entity domain, unique_id suffix)
+LEGACY_FRONT_HOOD_ENTITIES = {
+    ("binary_sensor", "_hood_open"),
+    ("lock", "_engineHoodOpenStatus"),
+}
 
 
 def get_zeekr_client_class(use_local: bool = False):
@@ -89,8 +91,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType):
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Remove superseded front hood entities from the entity registry."""
+    """Migrate old config entries."""
+    _LOGGER.debug(
+        "Migrating config entry from version %s.%s", entry.version, entry.minor_version
+    )
+
     if entry.version == 1 and entry.minor_version < 2:
+        # 1.1 -> 1.2: the "Hood open" binary sensor and "Hood (closed = locked)" lock
+        # were replaced by the Front Hood cover, so drop their registry entries.
         registry = er.async_get(hass)
         for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
             if entity.platform != DOMAIN:
@@ -99,9 +107,13 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 entity.domain == domain and entity.unique_id.endswith(unique_id_suffix)
                 for domain, unique_id_suffix in LEGACY_FRONT_HOOD_ENTITIES
             ):
+                _LOGGER.info(
+                    "Removing %s, superseded by the Front Hood cover", entity.entity_id
+                )
                 registry.async_remove(entity.entity_id)
 
         hass.config_entries.async_update_entry(entry, minor_version=2)
+        _LOGGER.debug("Migration to config entry version 1.2 successful")
 
     return True
 

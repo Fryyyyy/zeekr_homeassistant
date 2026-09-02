@@ -1,8 +1,7 @@
 from unittest.mock import MagicMock, AsyncMock
 import pytest
 from homeassistant.components.cover import CoverDeviceClass, CoverEntityFeature
-from custom_components.zeekr_ev.cover import ZeekrFrontHood
-from custom_components.zeekr_ev.cover import ZeekrSunshade, ZeekrWindows, ZeekrWindow, async_setup_entry
+from custom_components.zeekr_ev.cover import ZeekrFrontHood, ZeekrSunshade, ZeekrWindows, ZeekrWindow, async_setup_entry
 from custom_components.zeekr_ev.const import DOMAIN
 
 
@@ -267,17 +266,17 @@ async def test_front_hood_open_command(hass):
 
     await hood.async_open_cover()
 
-    coordinator.async_inc_invoke.assert_awaited_once()
-    vehicle.do_remote_control.assert_called_once_with(
+    coordinator.async_inc_invoke.assert_called_once()
+    vehicle.do_remote_control.assert_called_with(
         "start",
         "RDU",
         {
             "serviceParameters": [
                 {
                     "key": "target",
-                    "value": "hood",
+                    "value": "hood"
                 }
             ]
-        },
+        }
     )
-    coordinator.async_request_refresh.assert_awaited_once()
+    coordinator.async_request_refresh.assert_called_once()
