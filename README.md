@@ -38,6 +38,17 @@ This is a custom integration for Zeekr Electric Vehicles for Home Assistant. It 
 - **Secrets**: Get the secrets by decompiling the Android app.
 - **Display**: Use vehicle-status-card for a good quality dashboard.
 
+## Model-specific diagnostics
+
+To inspect which API fields are actually returned for your vehicle model:
+
+1. Go to Settings -> Devices & Services -> Zeekr EV.
+2. Open the integration menu and select **Download diagnostics**.
+
+The diagnostics contain a redacted snapshot of the fields returned for each
+vehicle, plus a flattened field inventory. Account credentials, VINs, plates,
+device identifiers, and precise location data are removed.
+
 ## Issues
 
 Please report issues on the [GitHub Issue Tracker](https://github.com/Fryyyyy/zeekr_homeassistant/issues).
