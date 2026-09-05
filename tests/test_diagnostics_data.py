@@ -34,6 +34,11 @@ def test_build_diagnostics_redacts_identity_and_keeps_vehicle_values():
         vin: {
             "modelName": "Zeekr X",
             "licensePlate": "SECRET-PLATE",
+            "plateNo": "SECRET-PLATE-NO",
+            "userVehId": 63314,
+            "userId": "25702574",
+            "temId": "secret-telematics-id",
+            "nickName": "Personal car name",
             "deviceId": "secret-device",
         }
     }
@@ -52,6 +57,11 @@ def test_build_diagnostics_redacts_identity_and_keeps_vehicle_values():
     vehicle = result["vehicles"]["vehicle_1"]
     assert vehicle["metadata"]["modelName"] == "Zeekr X"
     assert vehicle["metadata"]["licensePlate"] == "**REDACTED**"
+    assert vehicle["metadata"]["plateNo"] == "**REDACTED**"
+    assert vehicle["metadata"]["userVehId"] == "**REDACTED**"
+    assert vehicle["metadata"]["userId"] == "**REDACTED**"
+    assert vehicle["metadata"]["temId"] == "**REDACTED**"
+    assert vehicle["metadata"]["nickName"] == "**REDACTED**"
     assert vehicle["metadata"]["deviceId"] == "**REDACTED**"
     assert vehicle["data"]["basicVehicleStatus"]["batteryStatus"]["stateOfCharge"] == 74
     assert vehicle["data"]["basicVehicleStatus"]["position"] == "**REDACTED**"
