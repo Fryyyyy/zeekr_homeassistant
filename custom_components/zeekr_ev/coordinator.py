@@ -29,6 +29,7 @@ from .const import (
     VTM_MIN_DURATION,
 )
 from .request_stats import ZeekrRequestStats
+from .utils import get_api_version
 
 if TYPE_CHECKING:
     # Import for type checking only
@@ -196,6 +197,11 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         self.steering_wheel_duration = 15
         self.request_stats = ZeekrRequestStats(hass)
         self.latest_poll_time: Optional[str] = None  # Track latest poll time
+        # Cached zeekr_ev_api version string, populated by async_init_stats().
+        # get_api_version() reads package metadata from disk, which is a
+        # blocking operation, so it must never be called directly from a
+        # synchronous property (e.g. device_info) inside the event loop.
+        self.api_version: Optional[str] = None
         # Count of consecutive failed status polls per VIN, so carry-forward of
         # stale data is bounded (see MAX_STALE_UPDATES).
         self._stale_count: dict[str, int] = {}
@@ -249,6 +255,13 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 and (cached := _cacheable_vtm_status(value)) is not None
             }
             self._vtm_support.update(dict.fromkeys(self._vtm_cache, True))
+        # get_api_version() inspects installed package metadata on disk
+        # (importlib.metadata), which performs blocking I/O. Resolve it once
+        # here, off the event loop, and cache the result so entities can read
+        # self.api_version synchronously from device_info.
+        self.api_version = await self.hass.async_add_executor_job(
+            get_api_version, self.client
+        )
 
     async def _handle_daily_reset(self, now):
         await self.request_stats.async_reset_today()
