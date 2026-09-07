@@ -8,6 +8,7 @@ from custom_components.zeekr_ev.climate import (
     async_setup_entry,
 )
 from custom_components.zeekr_ev.const import DOMAIN
+from custom_components.zeekr_ev.number import CONFIG_NUMBERS
 
 
 class MockVehicle:
@@ -29,7 +30,7 @@ class MockCoordinator:
         self.request_stats = MagicMock()
         self.request_stats.async_inc_request = AsyncMock()
         self.async_inc_invoke = AsyncMock()
-        self.ac_duration = 15
+        self.operation_durations = {vin: {"ac": 15} for vin in data}
         self.last_update_success = True
         self.vtm_locks = {}
         self._vtm_pending = {}
@@ -77,6 +78,7 @@ async def test_climate_optimistic_update():
     }
 
     coordinator = MockCoordinator(initial_data)
+    coordinator.operation_durations[vin]["ac"] = 17
     vehicle_mock = MagicMock()
     coordinator.vehicles[vin] = vehicle_mock
 
@@ -96,6 +98,10 @@ async def test_climate_optimistic_update():
     assert args[1] == "ZAF"
     assert args[2]["serviceParameters"][0]["key"] == "AC"
     assert args[2]["serviceParameters"][0]["value"] == "true"
+    assert args[2]["serviceParameters"][2] == {
+        "key": "AC.duration",
+        "value": "17",
+    }
 
     # Verify Optimistic Update
     climate_status = coordinator.data[vin]["additionalVehicleStatus"]["climateStatus"]
@@ -130,6 +136,116 @@ async def test_climate_optimistic_update():
 
     # Verify Delayed Refresh Task Created again
     assert climate.hass.async_create_task.call_count == 2
+    climate.hass.async_create_task.call_args[0][0].close()
+
+    vehicle_mock.do_remote_control.return_value = False
+    write_count = climate.async_write_ha_state.call_count
+    with pytest.raises(HomeAssistantError, match="Failed to set climate mode"):
+        await climate.async_set_hvac_mode(HVACMode.HEAT_COOL)
+    assert climate.hvac_mode == HVACMode.OFF
+    assert climate.async_write_ha_state.call_count == write_count
+    assert climate.hass.async_create_task.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_climate_set_temperature_rolls_back_on_rejection():
+    vin = "VIN1"
+    coordinator = MockCoordinator(
+        {vin: {"additionalVehicleStatus": {"climateStatus": {"preClimateActive": "1"}}}}
+    )
+    vehicle_mock = MagicMock()
+    vehicle_mock.do_remote_control.return_value = False
+    coordinator.vehicles[vin] = vehicle_mock
+
+    climate = ZeekrClimate(coordinator, vin)
+    climate.hass = DummyHass()
+    climate.async_write_ha_state = MagicMock()
+    previous_target = climate.target_temperature
+
+    # The climate is running, so the new target is re-sent; a rejection restores the old one
+    with pytest.raises(HomeAssistantError, match="Failed to set climate mode"):
+        await climate.async_set_temperature(temperature=previous_target + 2)
+
+    params = vehicle_mock.do_remote_control.call_args.args[2]["serviceParameters"]
+    assert params[1] == {"key": "AC.temp", "value": str(previous_target + 2)}
+    assert climate.target_temperature == previous_target
+    climate.async_write_ha_state.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_climate_set_temperature_rolls_back_on_request_error():
+    vin = "VIN1"
+    coordinator = MockCoordinator(
+        {vin: {"additionalVehicleStatus": {"climateStatus": {"preClimateActive": "1"}}}}
+    )
+    vehicle_mock = MagicMock()
+    vehicle_mock.do_remote_control.side_effect = ConnectionError("boom")
+    coordinator.vehicles[vin] = vehicle_mock
+
+    climate = ZeekrClimate(coordinator, vin)
+    climate.hass = DummyHass()
+    climate.async_write_ha_state = MagicMock()
+    previous_target = climate.target_temperature
+
+    # The request itself failing (network/auth) must roll the target back too
+    with pytest.raises(ConnectionError):
+        await climate.async_set_temperature(temperature=previous_target + 2)
+
+    assert climate.target_temperature == previous_target
+    climate.async_write_ha_state.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_climate_set_temperature_resends_while_running():
+    vin = "VIN1"
+    coordinator = MockCoordinator(
+        {vin: {"additionalVehicleStatus": {"climateStatus": {"preClimateActive": "1"}}}}
+    )
+    vehicle_mock = MagicMock()
+    vehicle_mock.do_remote_control.return_value = True
+    coordinator.vehicles[vin] = vehicle_mock
+
+    climate = ZeekrClimate(coordinator, vin)
+    climate.hass = DummyHass()
+    # Simple mock for async_create_task
+    climate.hass.async_create_task = MagicMock()
+    climate.async_write_ha_state = MagicMock()
+    previous_target = climate.target_temperature
+
+    await climate.async_set_temperature(temperature=previous_target + 2)
+
+    assert climate.target_temperature == previous_target + 2
+    params = vehicle_mock.do_remote_control.call_args.args[2]["serviceParameters"]
+    assert params[1] == {"key": "AC.temp", "value": str(previous_target + 2)}
+    climate.async_write_ha_state.assert_called()
+    assert climate.hass.async_create_task.called
+    climate.hass.async_create_task.call_args[0][0].close()
+
+
+@pytest.mark.asyncio
+async def test_climate_uses_default_duration_when_unset():
+    vin = "VIN1"
+    coordinator = MockCoordinator(
+        {vin: {"additionalVehicleStatus": {"climateStatus": {"preClimateActive": "0"}}}}
+    )
+    coordinator.operation_durations.clear()
+    vehicle_mock = MagicMock()
+    coordinator.vehicles[vin] = vehicle_mock
+
+    climate = ZeekrClimate(coordinator, vin)
+    climate.hass = DummyHass()
+    # Simple mock for async_create_task
+    climate.hass.async_create_task = MagicMock()
+    climate.async_write_ha_state = MagicMock()
+
+    await climate.async_set_hvac_mode(HVACMode.HEAT_COOL)
+
+    # Falls back to the CONFIG_NUMBERS default when the vehicle has no duration yet
+    params = vehicle_mock.do_remote_control.call_args.args[2]["serviceParameters"]
+    assert params[2] == {
+        "key": "AC.duration",
+        "value": str(CONFIG_NUMBERS["ac_operation_duration"][2]),
+    }
     climate.hass.async_create_task.call_args[0][0].close()
 
 
