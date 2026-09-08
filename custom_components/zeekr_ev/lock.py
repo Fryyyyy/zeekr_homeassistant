@@ -36,7 +36,6 @@ async def async_setup_entry(
         "doorLockStatusDriverRear": ("Driver rear door lock", "drivingSafetyStatus"),
         "doorLockStatusPassengerRear": ("Passenger rear door lock", "drivingSafetyStatus"),
         "trunkLockStatus": ("Trunk lock", "drivingSafetyStatus"),
-        "engineHoodOpenStatus": ("Hood (closed = locked)", "drivingSafetyStatus"),
         "electricParkBrakeStatus": ("Electric park brake", "drivingSafetyStatus"),
         "chargeLidDcAcStatus": ("Charge Lid", "electricVehicleStatus"),
     }
