@@ -3,6 +3,7 @@ import pytest
 from custom_components.zeekr_ev.button import (
     ZeekrFlashBlinkersButton,
     ZeekrHonkFlashButton,
+    ZeekrVentilateWindowsButton,
     ZeekrParkingComfortDisableButton,
     ZeekrForceUpdateButton,
     async_setup_entry,
@@ -100,6 +101,49 @@ async def test_honk_flash_button():
 
 
 @pytest.mark.asyncio
+async def test_ventilate_windows_button():
+    vin = "VIN1"
+    vehicle = MockVehicle(vin)
+    coordinator = MockCoordinator([vehicle])
+
+    button = ZeekrVentilateWindowsButton(coordinator, vin)
+    button.hass = DummyHass()
+
+    await button.async_press()
+
+    coordinator.async_inc_invoke.assert_called_once()
+    vehicle.do_remote_control.assert_called_with(
+        "start",
+        "RWS",
+        {
+            "serviceParameters": [
+                {
+                    "key": "target",
+                    "value": "ventilate"
+                }
+            ]
+        }
+    )
+    # Ventilating moves the windows, so the window covers are refreshed
+    coordinator.async_request_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_ventilate_windows_button_no_vehicle():
+    vin = "VIN1"
+    coordinator = MockCoordinator([])
+
+    button = ZeekrVentilateWindowsButton(coordinator, vin)
+    button.hass = DummyHass()
+
+    # Should safely return without sending a command
+    await button.async_press()
+
+    coordinator.async_inc_invoke.assert_not_called()
+    coordinator.async_request_refresh.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_parking_comfort_disable_button():
     vin = "VIN1"
     vehicle = MockVehicle(vin)
@@ -161,10 +205,11 @@ async def test_button_async_setup_entry(mock_config_entry):
 
     assert async_add_entities.called
     entities = async_add_entities.call_args[0][0]
-    assert len(entities) == 4
+    assert len(entities) == 5
 
     # Check all button types are present
     assert any(isinstance(e, ZeekrFlashBlinkersButton) for e in entities)
     assert any(isinstance(e, ZeekrHonkFlashButton) for e in entities)
+    assert any(isinstance(e, ZeekrVentilateWindowsButton) for e in entities)
     assert any(isinstance(e, ZeekrParkingComfortDisableButton) for e in entities)
     assert any(isinstance(e, ZeekrForceUpdateButton) for e in entities)

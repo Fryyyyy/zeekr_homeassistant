@@ -70,6 +70,16 @@ DRIVE_SIDE_RHD = "rhd"
 DEFAULT_NAME = DOMAIN
 DEFAULT_POLLING_INTERVAL = 5  # minutes
 
+# Refrigeration-box protocol bounds
+VTM_COOL_MIN_TEMP = -15
+VTM_COOL_MAX_TEMP = 20
+VTM_COOL_DEFAULT_TEMP = 3
+VTM_HEAT_MIN_TEMP = 35
+VTM_HEAT_MAX_TEMP = 50
+VTM_HEAT_DEFAULT_TEMP = 50
+VTM_MIN_DURATION = 60
+VTM_MAX_DURATION = 1440
+
 # Country code to (country_name, region) mapping
 COUNTRY_CODE_MAPPING = {
     "AD": ("Andorra", "EU"),

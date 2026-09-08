@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from homeassistant.components.select import SelectEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -123,7 +125,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class ZeekrSeatSelect(CoordinatorEntity, SelectEntity):
+class ZeekrSeatSelect(CoordinatorEntity[ZeekrCoordinator], SelectEntity):
     """Zeekr Seat Select class."""
 
     _attr_has_entity_name = True
@@ -205,7 +207,7 @@ class ZeekrSeatSelect(CoordinatorEntity, SelectEntity):
             return
 
         level = OPTION_TO_LEVEL.get(option, 0)
-        duration = getattr(self.coordinator, "seat_duration", 15)
+        duration = self.coordinator.operation_durations.get(self.vin, {}).get("seat", 15)
 
         command = "start"
         service_id = "ZAF"
@@ -228,16 +230,22 @@ class ZeekrSeatSelect(CoordinatorEntity, SelectEntity):
         setting["serviceParameters"] = params
 
         await self.coordinator.async_inc_invoke()
-        await self.hass.async_add_executor_job(
+        success = await self.hass.async_add_executor_job(
             vehicle.do_remote_control, command, service_id, setting
         )
+        if not success:
+            raise HomeAssistantError(f"Failed to set {self._attr_name} to {option}")
 
         # Optimistic update
         self._update_local_state_optimistically(level)
         self.async_write_ha_state()
 
-        # Trigger refresh (might revert if API is slow, but that's expected eventually)
-        await self.coordinator.async_request_refresh()
+        # Delay the refresh: an immediate poll can still return the old level
+        # and revert the optimistic update
+        async def delayed_refresh():
+            await asyncio.sleep(10)
+            await self.coordinator.async_request_refresh()
+        self.hass.async_create_task(delayed_refresh())
 
     def _update_local_state_optimistically(self, level: int):
         """Update the coordinator data to reflect the change immediately."""

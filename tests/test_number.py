@@ -1,13 +1,32 @@
 import asyncio
+from math import nan
+from types import SimpleNamespace
 from unittest.mock import MagicMock, AsyncMock, patch
 import pytest
-from custom_components.zeekr_ev.number import ZeekrChargingLimitNumber, ZeekrConfigNumber
+from homeassistant.const import Platform
+from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import restore_state
+from homeassistant.helpers.update_coordinator import BaseCoordinatorEntity
+from custom_components.zeekr_ev.climate import ZeekrRefrigerationBoxClimate
+from custom_components.zeekr_ev.const import DOMAIN
+from custom_components.zeekr_ev.coordinator import _apply_vtm_pending
+from custom_components.zeekr_ev.number import (
+    ZeekrChargingLimitNumber,
+    ZeekrConfigNumber,
+    ZeekrRefrigerationBoxDurationNumber,
+    _migrate_legacy_config_numbers,
+    async_setup_entry,
+)
 
 
 @pytest.fixture(autouse=True)
 def _instant_sleep():
     """Make the post-write reconcile delay instant in tests."""
-    with patch("custom_components.zeekr_ev.number.asyncio.sleep", new=AsyncMock()):
+    with (
+        patch("custom_components.zeekr_ev.number.asyncio.sleep", new=AsyncMock()),
+        patch("custom_components.zeekr_ev.entity.asyncio.sleep", new=AsyncMock()),
+    ):
         yield
 
 
@@ -15,21 +34,45 @@ class MockVehicle:
     def __init__(self, vin):
         self.vin = vin
         self.do_remote_control = MagicMock()
+        self.get_vtm_status = MagicMock()
+        self.data = {}
 
 
 class MockCoordinator:
     def __init__(self, vehicles):
         self.vehicles = vehicles
         self.data = {v.vin: {} for v in vehicles}
+        self.entry = MagicMock()
+        self.entry.async_create_background_task.side_effect = (
+            lambda hass, coro, name: hass.async_create_task(coro)
+        )
         self.async_inc_invoke = AsyncMock()
         self.async_request_refresh = AsyncMock()
-        self.seat_duration = 15
+        self.operation_durations = {}
+        self.last_update_success = True
+        self.vtm_locks = {}
+        self._vtm_pending = {}
+        self._vtm_reconcile_tasks = {}
+        self.request_stats = MagicMock()
+        self.request_stats.async_inc_request = AsyncMock()
+        self._last_secondary = {}
+        self._secondary_stale_count = {}
+        self._cache_vtm_status = MagicMock()
+        self.listeners = []
+        for vehicle in vehicles:
+            vehicle.get_vtm_status.side_effect = (
+                lambda vehicle=vehicle: self.data[vehicle.vin].get("vtmStatus")
+            )
 
     def get_vehicle_by_vin(self, vin):
         for v in self.vehicles:
             if v.vin == vin:
                 return v
         return None
+
+    def async_add_listener(self, callback):
+        self.listeners.append(callback)
+        return MagicMock()
 
 
 class DummyConfig:
@@ -158,26 +201,409 @@ async def test_charging_limit_step():
 
 @pytest.mark.asyncio
 async def test_config_number():
-    coordinator = MockCoordinator([])
-    coordinator.seat_duration = 10
+    vehicle = MockVehicle("VIN1")
+    coordinator = MockCoordinator([vehicle])
+    coordinator.operation_durations[vehicle.vin] = {"seat": 10}
 
     number_entity = ZeekrConfigNumber(
-        coordinator, "entry_id", "seat_op", "Seat Operation", "seat_duration"
+        coordinator,
+        vehicle.vin,
+        "seat_op",
+        "Seat Operation",
+        "seat",
+        15,
     )
     number_entity.hass = DummyHass()
     number_entity.async_write_ha_state = MagicMock()
 
     # Check initial value
     assert number_entity.native_value == 10
+    assert number_entity.native_min_value == 1
+    assert number_entity.native_max_value == 60
+    assert number_entity.device_info["identifiers"] == {(DOMAIN, vehicle.vin)}
 
     # Set value
     await number_entity.async_set_native_value(5)
     assert number_entity.native_value == 5
-    assert coordinator.seat_duration == 5
+    assert coordinator.operation_durations[vehicle.vin]["seat"] == 5
     number_entity.async_write_ha_state.assert_called()
 
-    # Test async_added_to_hass with restoration
-    # Mocking async_get_last_number_data is hard because it's a mixin method
-    # But we can test that it calls super().async_added_to_hass()
-    # Since we can't easily mock the restore logic without full HA environment,
-    # we'll skip detailed restoration test but we covered the main logic logic.
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("restored", "expected"),
+    [(0, 1), (999, 60), (7.0, 7)],
+    ids=["clamped-to-min", "clamped-to-max", "in-range"],
+)
+async def test_config_number_clamps_restored_value(restored, expected):
+    vehicle = MockVehicle("VIN1")
+    coordinator = MockCoordinator([vehicle])
+
+    number_entity = ZeekrConfigNumber(
+        coordinator,
+        vehicle.vin,
+        "seat_op",
+        "Seat Operation",
+        "seat",
+        15,
+    )
+    number_entity.hass = DummyHass()
+
+    # A value stored under the old 0-15 range is clamped into the new 1-60 range
+    with patch.object(
+        BaseCoordinatorEntity, "async_added_to_hass", AsyncMock()
+    ), patch.object(
+        ZeekrConfigNumber,
+        "async_get_last_number_data",
+        AsyncMock(return_value=SimpleNamespace(native_value=restored)),
+    ):
+        await number_entity.async_added_to_hass()
+
+    assert number_entity.native_value == expected
+    assert coordinator.operation_durations[vehicle.vin]["seat"] == expected
+
+
+@pytest.mark.asyncio
+async def test_config_numbers_are_created_per_vehicle(hass, mock_config_entry):
+    coordinator = MockCoordinator([MockVehicle("VIN2"), MockVehicle("VIN1")])
+    hass.data[DOMAIN] = {mock_config_entry.entry_id: coordinator}
+    async_add_entities = MagicMock()
+
+    with patch(
+        "custom_components.zeekr_ev.number._migrate_legacy_config_numbers",
+        return_value={"seat": 12},
+    ) as migrate:
+        await async_setup_entry(hass, mock_config_entry, async_add_entities)
+
+    # The lowest VIN inherits the legacy entities; every vehicle is seeded with their values
+    migrate.assert_called_once_with(hass, mock_config_entry.entry_id, "VIN1")
+    config_numbers = [
+        entity
+        for entity in async_add_entities.call_args.args[0]
+        if isinstance(entity, ZeekrConfigNumber)
+    ]
+    assert {(entity.unique_id, entity.native_value) for entity in config_numbers} == {
+        ("VIN1_seat_operation_duration", 12),
+        ("VIN1_ac_operation_duration", 15),
+        ("VIN1_steering_wheel_heat_duration", 8),
+        ("VIN2_seat_operation_duration", 12),
+        ("VIN2_ac_operation_duration", 15),
+        ("VIN2_steering_wheel_heat_duration", 8),
+    }
+
+
+@pytest.mark.asyncio
+async def test_config_numbers_setup_without_legacy_entities(hass, mock_config_entry):
+    coordinator = MockCoordinator([MockVehicle("VIN1")])
+    hass.data[DOMAIN] = {mock_config_entry.entry_id: coordinator}
+    async_add_entities = MagicMock()
+
+    # Unpatched: the registry seeded by conftest reports no legacy entities
+    await async_setup_entry(hass, mock_config_entry, async_add_entities)
+
+    registry = hass.data[er.DATA_REGISTRY]
+    registry.async_get_entity_id.assert_any_call(
+        Platform.NUMBER, DOMAIN, f"{mock_config_entry.entry_id}_seat_operation_duration"
+    )
+    registry.async_update_entity.assert_not_called()
+    config_numbers = [
+        entity
+        for entity in async_add_entities.call_args.args[0]
+        if isinstance(entity, ZeekrConfigNumber)
+    ]
+    assert {(entity.unique_id, entity.native_value) for entity in config_numbers} == {
+        ("VIN1_seat_operation_duration", 15),
+        ("VIN1_ac_operation_duration", 15),
+        ("VIN1_steering_wheel_heat_duration", 8),
+    }
+
+
+@pytest.mark.asyncio
+async def test_config_numbers_setup_without_vehicles(hass, mock_config_entry):
+    coordinator = MockCoordinator([])
+    hass.data[DOMAIN] = {mock_config_entry.entry_id: coordinator}
+    async_add_entities = MagicMock()
+
+    with patch(
+        "custom_components.zeekr_ev.number._migrate_legacy_config_numbers"
+    ) as migrate:
+        await async_setup_entry(hass, mock_config_entry, async_add_entities)
+
+    # Nothing to migrate or create for an account without cars
+    migrate.assert_not_called()
+    assert not any(
+        isinstance(entity, ZeekrConfigNumber)
+        for entity in async_add_entities.call_args.args[0]
+    )
+
+
+def _stored_state(native_value):
+    """Mimic the RestoreNumber StoredState of a legacy duration entity.
+
+    Only ``extra_data`` is modelled: the migration never reads ``.state``, because
+    RestoreNumber has always stored ``native_value`` in extra_data.
+    """
+    return SimpleNamespace(
+        extra_data=SimpleNamespace(as_dict=lambda: {"native_value": native_value}),
+    )
+
+
+def _legacy_seat_registry(hass):
+    """Make the seeded registry report one legacy seat duration entity."""
+    registry = hass.data[er.DATA_REGISTRY]
+    registry.async_get_entity_id.side_effect = lambda _domain, _platform, unique_id: (
+        "number.seat_operation_duration"
+        if unique_id == "test_entry_seat_operation_duration"
+        else None
+    )
+    return registry
+
+
+@pytest.mark.parametrize(
+    ("stored_state", "expected"),
+    [
+        (_stored_state(12), {"seat": 12}),
+        (_stored_state(0), {"seat": 1}),
+        (_stored_state(999), {"seat": 60}),
+        (_stored_state("abc"), {}),
+        # A live state is never read on its own (see _stored_state)
+        (SimpleNamespace(state=SimpleNamespace(state="7"), extra_data=None), {}),
+        (None, {}),
+    ],
+    ids=[
+        "value",
+        "clamped-to-min",
+        "clamped-to-max",
+        "non-numeric",
+        "no-extra-data",
+        "no-restore-data",
+    ],
+)
+def test_migrate_legacy_config_numbers(hass, stored_state, expected):
+    registry = _legacy_seat_registry(hass)
+    if stored_state is not None:
+        last_states = hass.data[restore_state.DATA_RESTORE_STATE].last_states
+        last_states["number.seat_operation_duration"] = stored_state
+
+    values = _migrate_legacy_config_numbers(hass, "test_entry", "VIN1")
+
+    assert values == expected
+    # The legacy entity keeps its entity_id and history under the new unique_id
+    registry.async_update_entity.assert_called_once_with(
+        "number.seat_operation_duration",
+        new_unique_id="VIN1_seat_operation_duration",
+    )
+
+
+def test_migrate_legacy_config_numbers_already_migrated(hass):
+    registry = hass.data[er.DATA_REGISTRY]
+    registry.async_get_entity_id.return_value = "number.seat_operation_duration"
+
+    values = _migrate_legacy_config_numbers(hass, "test_entry", "VIN1")
+
+    # The per-vehicle unique_ids already exist, so nothing is renamed or carried over
+    assert values == {}
+    registry.async_update_entity.assert_not_called()
+
+
+def test_migrate_legacy_config_numbers_without_legacy_entities(hass):
+    registry = hass.data[er.DATA_REGISTRY]
+
+    values = _migrate_legacy_config_numbers(hass, "test_entry", "VIN1")
+
+    assert values == {}
+    registry.async_update_entity.assert_not_called()
+
+
+def _vtm_status(active="1", temp="3.0", duration="300"):
+    return {
+        "activeStatus": active,
+        "currentTemperature": "2.0",
+        "vtmTsActive": "false",
+        "vtmModel": {
+            "setting": [
+                {
+                    "temp": temp,
+                    "duration": duration,
+                }
+            ]
+        },
+    }
+
+
+@pytest.mark.asyncio
+async def test_refrigeration_rechecks_authoritative_state_at_pending_expiry():
+    vehicle = MockVehicle("VIN1")
+    vehicle.do_remote_control.return_value = True
+    coordinator = MockCoordinator([vehicle])
+    coordinator.data["VIN1"] = {"vtmStatus": _vtm_status()}
+    number = ZeekrRefrigerationBoxDurationNumber(coordinator, "VIN1")
+    number.hass = DummyHass()
+    number.async_write_ha_state = MagicMock()
+    responses = [
+        _vtm_status(duration="300"),
+        _vtm_status(duration="600"),
+    ]
+    now = 0
+    assert number.native_value == 5
+
+    async def refresh():
+        status = responses.pop(0)
+        _apply_vtm_pending(coordinator._vtm_pending, "VIN1", status)
+        coordinator.data["VIN1"]["vtmStatus"] = status
+
+    async def advance(delay):
+        nonlocal now
+        now += delay
+
+    coordinator.async_request_refresh.side_effect = refresh
+    with (
+        patch(
+            "custom_components.zeekr_ev.coordinator.monotonic",
+            side_effect=lambda: now,
+        ),
+        patch(
+            "custom_components.zeekr_ev.entity.monotonic",
+            side_effect=lambda: now,
+        ),
+        patch(
+            "custom_components.zeekr_ev.entity.asyncio.sleep",
+            side_effect=advance,
+        ) as sleep,
+    ):
+        await number.async_set_native_value(22)
+        vehicle.do_remote_control.assert_called_once_with(
+            "start",
+            "ZAJ",
+            {
+                "serviceParameters": [
+                    {"key": "temp", "value": "3.0"},
+                    {"key": "duration", "value": "1320"},
+                    {"key": "zaj.ts", "value": "false"},
+                ]
+            },
+        )
+        assert number.native_value == 22
+        await asyncio.gather(*number.hass.created_tasks)
+
+    assert [call.args[0] for call in sleep.await_args_list] == [10, 20]
+    assert coordinator.async_request_refresh.await_count == 2
+    assert number.native_value == 10
+    assert "VIN1" not in coordinator._vtm_pending
+
+
+@pytest.mark.asyncio
+async def test_refrigeration_duration_setup_requires_usable_vtm(
+    hass,
+    mock_config_entry,
+):
+    supported = MockVehicle("SUPPORTED")
+    unsupported = MockVehicle("UNSUPPORTED")
+    coordinator = MockCoordinator([supported, unsupported])
+    coordinator.data["SUPPORTED"] = {"vtmStatus": _vtm_status()}
+    hass.data[DOMAIN] = {mock_config_entry.entry_id: coordinator}
+    async_add_entities = MagicMock()
+
+    await async_setup_entry(hass, mock_config_entry, async_add_entities)
+
+    entities = async_add_entities.call_args.args[0]
+    duration_entities = [
+        entity
+        for entity in entities
+        if isinstance(entity, ZeekrRefrigerationBoxDurationNumber)
+    ]
+    assert [entity.vin for entity in duration_entities] == ["SUPPORTED"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value", [0, 25, nan])
+async def test_refrigeration_duration_rejects_invalid_value(value):
+    vehicle = MockVehicle("VIN1")
+    coordinator = MockCoordinator([vehicle])
+    coordinator.data["VIN1"] = {"vtmStatus": _vtm_status()}
+    number = ZeekrRefrigerationBoxDurationNumber(coordinator, "VIN1")
+    number.hass = DummyHass()
+
+    with pytest.raises(HomeAssistantError):
+        await number.async_set_native_value(value)
+
+    vehicle.do_remote_control.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_refrigeration_writes_do_not_clobber_each_other():
+    vehicle = MockVehicle("VIN1")
+    vehicle.do_remote_control.return_value = True
+    coordinator = MockCoordinator([vehicle])
+    coordinator.data["VIN1"] = {"vtmStatus": _vtm_status()}
+    vehicle.get_vtm_status.side_effect = [_vtm_status(), _vtm_status()]
+
+    reconcile_started = asyncio.Event()
+    now = 0
+    refreshed = []
+
+    async def advance(delay):
+        nonlocal now
+        if not reconcile_started.is_set():
+            reconcile_started.set()
+            await asyncio.Future()
+        now += delay
+
+    responses = [
+        _vtm_status(),
+        _vtm_status(temp="4.0", duration="1320"),
+    ]
+
+    async def refresh():
+        status = responses.pop(0)
+        _apply_vtm_pending(coordinator._vtm_pending, "VIN1", status)
+        refreshed.append((now, status["vtmModel"]["setting"][0].copy()))
+        coordinator.data["VIN1"]["vtmStatus"] = status
+
+    hass = DummyHass()
+    climate = ZeekrRefrigerationBoxClimate(coordinator, "VIN1")
+    duration = ZeekrRefrigerationBoxDurationNumber(coordinator, "VIN1")
+    climate.hass = hass
+    duration.hass = hass
+    climate.async_write_ha_state = MagicMock()
+    duration.async_write_ha_state = MagicMock()
+    coordinator.async_request_refresh.side_effect = refresh
+
+    with (
+        patch(
+            "custom_components.zeekr_ev.coordinator.monotonic",
+            side_effect=lambda: now,
+        ),
+        patch(
+            "custom_components.zeekr_ev.entity.monotonic",
+            side_effect=lambda: now,
+        ),
+        patch(
+            "custom_components.zeekr_ev.entity.asyncio.sleep",
+            side_effect=advance,
+        ),
+    ):
+        await climate.async_set_temperature(temperature=4)
+        first_reconcile = hass.created_tasks[-1]
+        await reconcile_started.wait()
+        now = 25
+        await duration.async_set_native_value(22)
+        latest_reconcile = hass.created_tasks[-1]
+
+        assert vehicle.do_remote_control.call_args_list[1].args[2][
+            "serviceParameters"
+        ] == [
+            {"key": "temp", "value": "4.0"},
+            {"key": "duration", "value": "1320"},
+            {"key": "zaj.ts", "value": "false"},
+        ]
+        assert coordinator._vtm_reconcile_tasks["VIN1"] is latest_reconcile
+        await asyncio.gather(first_reconcile, return_exceptions=True)
+        assert first_reconcile.cancelled()
+        await latest_reconcile
+
+        assert refreshed == [
+            (35, {"temp": "4.0", "duration": "1320"}),
+            (55, {"temp": "4.0", "duration": "1320"}),
+        ]
+        assert "VIN1" not in coordinator._vtm_reconcile_tasks
