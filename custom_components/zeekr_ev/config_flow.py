@@ -23,9 +23,15 @@ from .const import (
     CONF_COUNTRY_CODE,
     CONF_USE_LOCAL_API,
     CONF_DRIVE_SIDE,
+    CONF_SMART_POLLING,
+    CONF_SLEEP_POLLING_INTERVAL,
+    CONF_SLEEP_FULL_REFRESH_INTERVAL,
     DRIVE_SIDE_LHD,
     DRIVE_SIDE_RHD,
     DEFAULT_POLLING_INTERVAL,
+    DEFAULT_SMART_POLLING,
+    DEFAULT_SLEEP_POLLING_INTERVAL,
+    DEFAULT_SLEEP_FULL_REFRESH_INTERVAL,
     DOMAIN,
     COUNTRY_CODE_MAPPING,
 )
@@ -175,6 +181,18 @@ class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
                         CONF_POLLING_INTERVAL,
                         default=defaults.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL),
                     ): int,
+                    vol.Optional(
+                        CONF_SMART_POLLING,
+                        default=defaults.get(CONF_SMART_POLLING, DEFAULT_SMART_POLLING),
+                    ): selector.BooleanSelector(),
+                    vol.Optional(
+                        CONF_SLEEP_POLLING_INTERVAL,
+                        default=defaults.get(CONF_SLEEP_POLLING_INTERVAL, DEFAULT_SLEEP_POLLING_INTERVAL),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1)),
+                    vol.Optional(
+                        CONF_SLEEP_FULL_REFRESH_INTERVAL,
+                        default=defaults.get(CONF_SLEEP_FULL_REFRESH_INTERVAL, DEFAULT_SLEEP_FULL_REFRESH_INTERVAL),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1)),
                     vol.Optional(
                         CONF_HMAC_ACCESS_KEY,
                         default=defaults.get(CONF_HMAC_ACCESS_KEY, ""),
@@ -395,6 +413,18 @@ class ZeekrEVAPIOptionsFlowHandler(config_entries.OptionsFlow):
                         CONF_POLLING_INTERVAL,
                         default=data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL),
                     ): int,
+                    vol.Optional(
+                        CONF_SMART_POLLING,
+                        default=data.get(CONF_SMART_POLLING, DEFAULT_SMART_POLLING),
+                    ): selector.BooleanSelector(),
+                    vol.Optional(
+                        CONF_SLEEP_POLLING_INTERVAL,
+                        default=data.get(CONF_SLEEP_POLLING_INTERVAL, DEFAULT_SLEEP_POLLING_INTERVAL),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1)),
+                    vol.Optional(
+                        CONF_SLEEP_FULL_REFRESH_INTERVAL,
+                        default=data.get(CONF_SLEEP_FULL_REFRESH_INTERVAL, DEFAULT_SLEEP_FULL_REFRESH_INTERVAL),
+                    ): vol.All(vol.Coerce(int), vol.Range(min=1)),
                     vol.Optional(
                         CONF_HMAC_ACCESS_KEY,
                         default=data.get(CONF_HMAC_ACCESS_KEY, ""),

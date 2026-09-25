@@ -19,7 +19,13 @@ import homeassistant.helpers.event as event
 
 from .const import (
     CONF_POLLING_INTERVAL,
+    CONF_SLEEP_FULL_REFRESH_INTERVAL,
+    CONF_SLEEP_POLLING_INTERVAL,
+    CONF_SMART_POLLING,
     DEFAULT_POLLING_INTERVAL,
+    DEFAULT_SLEEP_FULL_REFRESH_INTERVAL,
+    DEFAULT_SLEEP_POLLING_INTERVAL,
+    DEFAULT_SMART_POLLING,
     DOMAIN,
     VTM_COOL_MAX_TEMP,
     VTM_COOL_MIN_TEMP,
@@ -47,6 +53,52 @@ _LOGGER = logging.getLogger(__name__)
 MAX_STALE_UPDATES = 3
 VTM_SETTLE_SECONDS = 30
 VTM_STORAGE_VERSION = 1
+# After any command, every poll in this window is a full one, so results show
+# up even if a poll races the command or its status fetch fails.
+COMMAND_FULL_POLL_WINDOW = 600  # seconds
+# Slack when comparing elapsed time with the full-refresh interval, so a poll
+# landing a moment "early" (e.g. both sleep intervals equal) still refreshes.
+FULL_REFRESH_SLACK = 30  # seconds
+USAGE_MODE_DEEP_SLEEP = "0"
+CHARGER_STATES_CHARGING = {1, 2, 15}
+# Secondary payload keys carried forward from the previous poll when smart
+# polling skips the secondary endpoints.
+SECONDARY_KEYS = (
+    "chargingLimit",
+    "chargePlan",
+    "travelPlan",
+    "journeyLog",
+    "vtmStatus",
+)
+
+
+def _as_int(value: object) -> int | None:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def is_deep_sleep(status: object) -> bool:
+    """Return True only when the status explicitly reports deep sleep."""
+    if not isinstance(status, dict):
+        return False
+    usage_mode = (status.get("basicVehicleStatus") or {}).get("usageMode")
+    return usage_mode is not None and str(usage_mode).strip() == USAGE_MODE_DEEP_SLEEP
+
+
+def is_plugged_in_or_charging(status: object) -> bool:
+    if not isinstance(status, dict):
+        return False
+    ev = (status.get("additionalVehicleStatus") or {}).get("electricVehicleStatus") or {}
+    return bool(_as_int(ev.get("statusOfChargerConnection"))) or (
+        _as_int(ev.get("chargerState")) in CHARGER_STATES_CHARGING
+    )
+
+
+def is_idle(status: object) -> bool:
+    """Deep sleep and not plugged in: secondary data cannot change."""
+    return is_deep_sleep(status) and not is_plugged_in_or_charging(status)
 
 
 def _payload(value, types) -> object | None:
@@ -224,12 +276,39 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         self.vtm_locks: dict[str, asyncio.Lock] = {}
         self._vtm_pending: dict[str, dict[str, tuple[str, float]]] = {}
         self._vtm_reconcile_tasks: dict[str, asyncio.Task] = {}
-        polling_interval = entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL)
+        # Smart polling: while the car is in deep sleep and unplugged, only the
+        # primary status endpoint is queried (see _needs_full_poll), and at the
+        # slower sleep interval (see _apply_polling_interval).
+        self.smart_polling: bool = entry.data.get(
+            CONF_SMART_POLLING, DEFAULT_SMART_POLLING
+        )
+        self.awake_interval = timedelta(
+            minutes=entry.data.get(CONF_POLLING_INTERVAL, DEFAULT_POLLING_INTERVAL)
+        )
+        self.sleep_interval = timedelta(
+            minutes=entry.data.get(
+                CONF_SLEEP_POLLING_INTERVAL, DEFAULT_SLEEP_POLLING_INTERVAL
+            )
+        )
+        self.sleep_full_refresh = timedelta(
+            minutes=entry.data.get(
+                CONF_SLEEP_FULL_REFRESH_INTERVAL, DEFAULT_SLEEP_FULL_REFRESH_INTERVAL
+            )
+        )
+        self._last_full_poll: dict[str, float] = {}
+        self._was_idle: dict[str, bool] = {}
+        self._force_full_until = 0.0
+        self._last_command: float | None = None
+        self._active_interval: timedelta = self.awake_interval
+        # Per-VIN manual full-poll requests: a request counts as served only
+        # once a full poll that started after it has completed.
+        self._full_poll_requested: dict[str, int] = {}
+        self._full_poll_served: dict[str, int] = {}
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(minutes=polling_interval),
+            update_interval=self.awake_interval,
         )
 
         # Schedule daily reset at midnight
@@ -281,6 +360,110 @@ class ZeekrCoordinator(DataUpdateCoordinator):
         self._vtm_cache[vin] = cached
         self._vtm_store.async_delay_save(lambda: self._vtm_cache, 1)
 
+    def request_full_poll(self, vin: str) -> None:
+        """Make the next poll of this VIN query every endpoint."""
+        self._full_poll_requested[vin] = self._full_poll_requested.get(vin, 0) + 1
+
+    def _needs_full_poll(self, vin: str, status: dict, full_requested: bool) -> bool:
+        """Decide whether this poll must also query the secondary endpoints.
+
+        Secondary data (charging details, plans, journey log, VTM, remote
+        control state) cannot change while the car is in deep sleep and
+        unplugged, so those endpoints are skipped then ("idle"). One full poll
+        is still made on the transition into idle, and at least every
+        sleep_full_refresh.
+        """
+        if not self.smart_polling or full_requested:
+            return True
+        last_full = self._last_full_poll.get(vin)
+        if last_full is None:
+            return True
+        now = monotonic()
+        if now < self._force_full_until or self._command_unserved(vin):
+            return True
+        refresh_after = self.sleep_full_refresh.total_seconds() - FULL_REFRESH_SLACK
+        if now - last_full >= refresh_after:
+            return True
+        # Only unexpired VTM overlays need fresh VTM data to reconcile.
+        pending = self._vtm_pending.get(vin) or {}
+        if any(expires > now for _, expires in pending.values()):
+            return True
+        if not is_idle(status):
+            return True
+        # Idle now; do one last full poll if the car was not idle last time.
+        return not self._was_idle.get(vin, False)
+
+    def _command_unserved(self, vin: str) -> bool:
+        """True if a command was sent after this VIN's last full poll began."""
+        if self._last_command is None:
+            return False
+        last_full = self._last_full_poll.get(vin)
+        return last_full is None or last_full <= self._last_command
+
+    def _apply_polling_interval(self) -> None:
+        """Poll at the sleep interval only while every vehicle is idle.
+
+        DataUpdateCoordinator schedules the next refresh from update_interval
+        after each update, so changing it here takes effect immediately.
+        """
+        now = monotonic()
+        idle = (
+            self.smart_polling
+            and bool(self.vehicles)
+            and now >= self._force_full_until
+            and all(
+                self._was_idle.get(v.vin, False) and not self._command_unserved(v.vin)
+                for v in self.vehicles
+            )
+        )
+        interval = self.awake_interval
+        if idle:
+            # Never sleep past the next periodic full refresh.
+            refresh_in = min(
+                self._last_full_poll.get(v.vin, now)
+                + self.sleep_full_refresh.total_seconds()
+                - now
+                for v in self.vehicles
+            )
+            interval = max(
+                min(self.sleep_interval, timedelta(seconds=refresh_in)),
+                min(self.awake_interval, self.sleep_interval),
+            )
+        self._set_interval(interval)
+
+    def _set_interval(self, interval: timedelta) -> bool:
+        """Change the refresh interval; returns True if it changed."""
+        if interval == self._active_interval:
+            return False
+        _LOGGER.debug("Polling interval set to %s", interval)
+        self._active_interval = interval
+        self.update_interval = interval
+        return True
+
+    def _carry_forward_secondary(self, vin: str, vehicle_data: dict) -> dict:
+        """Fill skipped secondary data from the previous poll's snapshot.
+
+        The previous coordinator data is used (rather than _last_secondary) so
+        optimistic updates written by entities after a command are preserved.
+        """
+        previous = (self.data or {}).get(vin) or {}
+        for key in SECONDARY_KEYS:
+            if key in previous and key not in vehicle_data:
+                vehicle_data[key] = previous[key]
+        if isinstance(previous.get("chargingStatus"), dict):
+            vehicle_data["chargingStatus"] = {
+                **previous["chargingStatus"],
+                **(vehicle_data.get("chargingStatus") or {}),
+            }
+        remote_state = (previous.get("additionalVehicleStatus") or {}).get(
+            "remoteControlState"
+        )
+        if remote_state is not None:
+            vehicle_data.setdefault("additionalVehicleStatus", {}).setdefault(
+                "remoteControlState", remote_state
+            )
+        return vehicle_data
+
     async def _async_update_vehicle(self, vehicle: Vehicle) -> tuple[str, dict] | None:
         """Fetch data for a single vehicle."""
         try:
@@ -325,6 +508,21 @@ class ZeekrCoordinator(DataUpdateCoordinator):
 
         # Primary status fetch succeeded — clear any stale streak for this VIN.
         self._stale_count.pop(vehicle.vin, None)
+
+        requested = self._full_poll_requested.get(vehicle.vin, 0)
+        full_poll = self._needs_full_poll(
+            vehicle.vin,
+            vehicle_data,
+            requested > self._full_poll_served.get(vehicle.vin, 0),
+        )
+        self._was_idle[vehicle.vin] = is_idle(vehicle_data)
+        if not full_poll:
+            _LOGGER.debug(
+                "Vehicle %s is in deep sleep and unplugged; skipping secondary endpoints",
+                vehicle.vin,
+            )
+            return vehicle.vin, self._carry_forward_secondary(vehicle.vin, vehicle_data)
+        self._last_full_poll[vehicle.vin] = monotonic()
 
         # Define parallel tasks
         async def fetch_remote_control_state():
@@ -439,6 +637,9 @@ class ZeekrCoordinator(DataUpdateCoordinator):
             fetch_journey_log(),
             fetch_vtm_status(),
             return_exceptions=True
+        )
+        self._full_poll_served[vehicle.vin] = max(
+            self._full_poll_served.get(vehicle.vin, 0), requested
         )
 
         (
@@ -578,6 +779,7 @@ class ZeekrCoordinator(DataUpdateCoordinator):
 
             # Update latest poll time on every automatic poll
             self.latest_poll_time = datetime.now().isoformat()
+            self._apply_polling_interval()
 
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
@@ -589,4 +791,14 @@ class ZeekrCoordinator(DataUpdateCoordinator):
                 lock.release()
 
     async def async_inc_invoke(self):
+        # Every command goes through here (just before it is sent); keep polls
+        # full for a while so command results show up promptly.
+        now = monotonic()
+        self._force_full_until = now + COMMAND_FULL_POLL_WINDOW
+        self._last_command = now
+        # Leave the long sleep interval at once so the follow-up poll comes
+        # soon, also for commands that do not request a refresh themselves.
+        if self._set_interval(self.awake_interval):
+            if getattr(self, "_listeners", None) and hasattr(self, "_schedule_refresh"):
+                self._schedule_refresh()
         await self.request_stats.async_inc_invoke()
