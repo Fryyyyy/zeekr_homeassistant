@@ -211,7 +211,7 @@ async def test_lock_optimistic_update_trunk_lock():
 
     # verify RDU stop was sent to trunk
     coordinator.vehicles[vin].do_remote_control.assert_called_with(
-        "stop", "RDU", {"serviceParameters": [{"key": "target", "value": "trunk"}]}
+        "start", "RDU", {"serviceParameters": [{"key": "target", "value": "trunk"}]}
     )
 
     status = coordinator.data[vin]["additionalVehicleStatus"]["drivingSafetyStatus"]
