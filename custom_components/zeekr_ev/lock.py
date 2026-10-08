@@ -206,7 +206,7 @@ class ZeekrLock(CoordinatorEntity, LockEntity):
                 ]
             }
         elif self.field == "trunkLockStatus":
-            command = "stop"
+            command = "start"
             service_id = "RDU"
             setting = {
                 "serviceParameters": [
