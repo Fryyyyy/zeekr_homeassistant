@@ -48,3 +48,21 @@ New entities default to 15 minutes for AC and seats, and 8 minutes for steering 
 ## Issues
 
 Please report issues on the [GitHub Issue Tracker](https://github.com/Fryyyyy/zeekr_homeassistant/issues).
+
+### Login and setup diagnostics
+
+Setup and reconfiguration report separate errors for rejected access keys,
+API signatures, accounts reported as logged in elsewhere, region lookup failures,
+connection failures and timeouts. Other failures are reported as setup failures,
+without assuming that the account password is incorrect.
+
+The integration logs a warning with the failing stage (`client_initialization`
+or `login`), a diagnostic category, and a recognized API error code when available.
+These new warnings omit raw exceptions and API payloads. The underlying API
+library's debug logs may still contain sensitive data; review and redact them
+before attaching logs to an issue.
+
+A region lookup error does not always mean that a country is unsupported. Older
+API library versions also produce it when an EU lookup request is rejected.
+Verify the country and region-specific extraction settings (for Europe,
+`--region EU`) before changing account credentials.

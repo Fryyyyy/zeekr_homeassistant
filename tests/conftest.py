@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+import pytest_asyncio
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers import restore_state
 
@@ -43,8 +44,8 @@ class DummyHass:
         return func(*args, **kwargs)
 
 
-@pytest.fixture
-def hass():
+@pytest_asyncio.fixture
+async def hass():
     """Return a minimal Home Assistant-like object for unit tests."""
     return DummyHass()
 

@@ -29,6 +29,7 @@ from .const import (
     DOMAIN,
     COUNTRY_CODE_MAPPING,
 )
+from .setup_errors import log_setup_error
 from .utils import get_zeekr_client_class
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
         """Initialize."""
         self._errors: Dict[str, str] = {}
         self._temp_client = None
+        self._login_error = "setup_failed"
 
     async def async_step_user(self, user_input=None):
         """Handle a flow initialized by the user."""
@@ -85,7 +87,7 @@ class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
                 return self.async_create_entry(
                     title=user_input[CONF_USERNAME], data=user_input
                 )
-            self._errors["base"] = "auth"
+            self._errors["base"] = self._login_error
 
             return await self._show_config_form(user_input)
 
@@ -242,6 +244,8 @@ class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
         use_local_api=False,
     ):
         """Return true if credentials is valid."""
+        self._login_error = "setup_failed"
+        stage = "client_initialization"
         try:
             ZeekrClient = await self.hass.async_add_executor_job(
                 get_zeekr_client_class, use_local_api
@@ -258,10 +262,11 @@ class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
                 vin_iv=vin_iv,
                 logger=_LOGGER,
             )
+            stage = "login"
             await self.hass.async_add_executor_job(client.login)
             self._temp_client = client
-        except Exception:  # pylint: disable=broad-except
-            pass
+        except Exception as error:  # pylint: disable=broad-except
+            self._login_error = log_setup_error(_LOGGER, error, stage=stage)
         else:
             return True
         return False
@@ -273,6 +278,7 @@ class ZeekrEVAPIOptionsFlowHandler(config_entries.OptionsFlow):
     def __init__(self, config_entry):
         """Initialize options flow."""
         self._config_entry = config_entry
+        self._login_error = "setup_failed"
 
     async def async_step_init(self, user_input=None):  # pylint: disable=unused-argument
         """Manage the options."""
@@ -354,7 +360,7 @@ class ZeekrEVAPIOptionsFlowHandler(config_entries.OptionsFlow):
                         user_input.get(CONF_USE_LOCAL_API, self._config_entry.data.get(CONF_USE_LOCAL_API, False)),
                     )
                     if not valid:
-                        errors["base"] = "auth"
+                        errors["base"] = self._login_error
                     else:
                         # Update config entry data with new values
                         self.hass.config_entries.async_update_entry(
@@ -462,6 +468,8 @@ class ZeekrEVAPIOptionsFlowHandler(config_entries.OptionsFlow):
         use_local_api=False,
     ):
         """Return true if credentials is valid."""
+        self._login_error = "setup_failed"
+        stage = "client_initialization"
         try:
             ZeekrClient = await self.hass.async_add_executor_job(
                 get_zeekr_client_class, use_local_api
@@ -478,9 +486,10 @@ class ZeekrEVAPIOptionsFlowHandler(config_entries.OptionsFlow):
                 vin_iv=vin_iv,
                 logger=_LOGGER,
             )
+            stage = "login"
             await self.hass.async_add_executor_job(client.login)
-        except Exception:  # pylint: disable=broad-except
-            pass
+        except Exception as error:  # pylint: disable=broad-except
+            self._login_error = log_setup_error(_LOGGER, error, stage=stage)
         else:
             return True
         return False
