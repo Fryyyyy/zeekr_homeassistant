@@ -35,7 +35,14 @@
       "invalid_base64_vin_key": "VIN key must be base64 encoded.",
       "invalid_length_exact_16_vin_key": "VIN key must be exactly 16 characters.",
       "invalid_base64_vin_iv": "VIN IV must be base64 encoded.",
-      "invalid_length_exact_16_vin_iv": "VIN IV must be exactly 16 characters."
+      "invalid_length_exact_16_vin_iv": "VIN IV must be exactly 16 characters.",
+      "invalid_access_key": "Zeekr rejected the HMAC access key. Check that the extracted API keys match your account region (for Europe, extract with --region EU).",
+      "signature_failed": "Zeekr rejected the API signature. Check the HMAC keys and prod secret for the selected region. This does not necessarily mean your account password is wrong.",
+      "account_in_use": "Zeekr reports that this account is logged in elsewhere. Check for another app or integration session using this account, then retry.",
+      "region_lookup_failed": "Zeekr could not resolve the API region. Check the country code and region-specific HMAC keys. This error can also occur when the region lookup request is rejected; it does not prove that your country is unsupported.",
+      "cannot_connect": "Could not connect to Zeekr. Check network connectivity and retry.",
+      "timeout": "The request to Zeekr timed out. Please retry later.",
+      "setup_failed": "Zeekr login or setup failed. Check your account details, country and API keys. See the integration log for the failure category."
     },
     "abort": {
       "single_instance_allowed": "Only a single instance is allowed."
@@ -78,7 +85,14 @@
       "invalid_base64_vin_key": "VIN key must be base64 encoded.",
       "invalid_length_exact_16_vin_key": "VIN key must be exactly 16 characters.",
       "invalid_base64_vin_iv": "VIN IV must be base64 encoded.",
-      "invalid_length_exact_16_vin_iv": "VIN IV must be exactly 16 characters."
+      "invalid_length_exact_16_vin_iv": "VIN IV must be exactly 16 characters.",
+      "invalid_access_key": "Zeekr rejected the HMAC access key. Check that the extracted API keys match your account region (for Europe, extract with --region EU).",
+      "signature_failed": "Zeekr rejected the API signature. Check the HMAC keys and prod secret for the selected region. This does not necessarily mean your account password is wrong.",
+      "account_in_use": "Zeekr reports that this account is logged in elsewhere. Check for another app or integration session using this account, then retry.",
+      "region_lookup_failed": "Zeekr could not resolve the API region. Check the country code and region-specific HMAC keys. This error can also occur when the region lookup request is rejected; it does not prove that your country is unsupported.",
+      "cannot_connect": "Could not connect to Zeekr. Check network connectivity and retry.",
+      "timeout": "The request to Zeekr timed out. Please retry later.",
+      "setup_failed": "Zeekr login or setup failed. Check your account details, country and API keys. See the integration log for the failure category."
     },
     "abort": {
       "reconfigure_successful": "Reconfiguration successful."
