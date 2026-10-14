@@ -15,6 +15,22 @@ from .const import DOMAIN, CONF_DRIVE_SIDE, DRIVE_SIDE_LHD
 from .coordinator import ZeekrCoordinator
 
 
+def _ac_vent_running(data: dict) -> bool | None:
+    """Read regular-backend ventilation telemetry without assuming missing is off."""
+    additional = data.get("additionalVehicleStatus")
+    if not isinstance(additional, dict):
+        return None
+    climate = additional.get("climateStatus")
+    if not isinstance(climate, dict):
+        return None
+    value = climate.get("airBlowerActive")
+    if value == "1":
+        return True
+    if value == "0":
+        return False
+    return None
+
+
 class ZeekrBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Zeekr Binary Sensor class."""
 
@@ -66,6 +82,15 @@ async def async_setup_entry(
 
     entities = []
     for vin in coordinator.data:
+        entities.append(
+            ZeekrBinarySensor(
+                coordinator,
+                vin,
+                "ac_vent_running",
+                "AC Vent Running",
+                _ac_vent_running,
+            )
+        )
         # Charging Status
         entities.append(
             ZeekrBinarySensor(
