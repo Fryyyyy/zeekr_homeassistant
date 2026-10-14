@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity
@@ -13,8 +14,10 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .binary_sensor import _ac_vent_running
 from .const import DOMAIN
 from .coordinator import ZeekrCoordinator
+from .entity import ZeekrEntity
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,6 +56,7 @@ async def async_setup_entry(
         entities.append(ZeekrChargingScheduleSwitch(coordinator, vin))
         entities.append(ZeekrTravelPlanSwitch(coordinator, vin))
         entities.append(ZeekrDepartureACSwitch(coordinator, vin))
+        entities.append(ZeekrACVentSwitch(coordinator, vin))
 
     async_add_entities(entities)
 
@@ -621,3 +625,144 @@ class ZeekrDepartureACSwitch(CoordinatorEntity[ZeekrCoordinator], SwitchEntity):
             "name": f"Zeekr {self.vin}",
             "manufacturer": "Zeekr",
         }
+
+
+class ZeekrACVentControl:
+    """Serialize ventilation commands and schedule telemetry checks."""
+
+    def __init__(
+        self,
+        coordinator: ZeekrCoordinator,
+        vin: str,
+        state_changed: Callable[[], None] | None = None,
+    ) -> None:
+        """Initialize per-vehicle command handling."""
+        self.coordinator = coordinator
+        self.vin = vin
+        self._refresh_task: asyncio.Task | None = None
+        self._command_lock = asyncio.Lock()
+        self.optimistic_state: bool | None = None
+        self._command_revision = 0
+        self._state_changed = state_changed
+
+    async def async_command(self, hass: HomeAssistant, active: bool) -> None:
+        """Serialize explicit commands without relying on sensor state."""
+        async with self._command_lock:
+            await self._async_set_active(hass, active)
+
+    async def _async_set_active(self, hass: HomeAssistant, active: bool) -> None:
+        """Send the native RCC start or stop command."""
+        vehicle = self.coordinator.get_vehicle_by_vin(self.vin)
+        if vehicle is None:
+            raise HomeAssistantError("Vehicle is unavailable")
+
+        # zeekr_ev_api 0.1.15 hashes sorted JSON but sends insertion-order JSON.
+        # Keep the wire order identical to its signing order (and the working
+        # app payload): operationScheduling before serviceParameters.
+        setting: dict[str, Any] = {}
+        if active:
+            setting["operationScheduling"] = {"duration": 6}
+        setting["serviceParameters"] = [
+            {"key": "rcc.conditioner", "value": "50"},
+            {"key": "rcc.ventilation", "value": "0"},
+        ]
+        command = "start" if active else "stop"
+
+        await self.coordinator.async_inc_invoke()
+        try:
+            success = await hass.async_add_executor_job(
+                vehicle.do_remote_control, command, "RCC", setting
+            )
+        except Exception as err:
+            raise HomeAssistantError(
+                "AC vent request failed; vehicle execution is not confirmed"
+            ) from err
+        if not success:
+            raise HomeAssistantError(
+                "AC vent request failed; vehicle execution is not confirmed"
+            )
+
+        _LOGGER.info("AC vent %s requested for vehicle %s", command, self.vin)
+
+        self._command_revision += 1
+        if self._refresh_task is not None:
+            self._refresh_task.cancel()
+        self.optimistic_state = active
+        if self._state_changed is not None:
+            self._state_changed()
+        self._refresh_task = self.coordinator.entry.async_create_background_task(
+            hass,
+            self._async_refresh_after_command(active, self._command_revision),
+            f"Refresh AC vent {self.vin}",
+        )
+
+    async def _async_refresh_after_command(
+        self, active: bool, revision: int | None = None
+    ) -> None:
+        """Check for activation, then check again after a short vent cycle."""
+        if revision is None:
+            revision = self._command_revision
+        # The app appears to use a fixed one-minute vent cycle. Check activation
+        # after 10 seconds, then expected expiry about 70 seconds after acceptance.
+        # Confirm the state from telemetry rather than assuming the timer stopped it.
+        await asyncio.sleep(10)
+        try:
+            # Await telemetry before clearing the estimate or deciding on the expiry check.
+            await self.coordinator.async_refresh()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self._clear_optimistic_state(revision)
+            raise
+        self._clear_optimistic_state(revision)
+        if active and _ac_vent_running(self.coordinator.data.get(self.vin, {})) is True:
+            await asyncio.sleep(60)
+            await self.coordinator.async_refresh()
+
+    def _clear_optimistic_state(self, revision: int) -> None:
+        """Let telemetry replace only the estimate belonging to this command."""
+        if revision != self._command_revision:
+            return
+        self.optimistic_state = None
+        if self._state_changed is not None:
+            self._state_changed()
+
+
+class ZeekrACVentSwitch(ZeekrEntity, SwitchEntity):
+    """Offer both commands with optimistic state until the follow-up refresh."""
+
+    _attr_icon = "mdi:fan"
+    _attr_assumed_state = True
+
+    def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
+        """Initialize ventilation control with independent vehicle feedback."""
+        super().__init__(coordinator, vin)
+        self._control = ZeekrACVentControl(
+            coordinator, vin, lambda: self.async_write_ha_state()
+        )
+        self._attr_name = "AC Vent"
+        self._attr_unique_id = f"{vin}_ac_vent"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Use the accepted command estimate until refreshed vehicle feedback."""
+        if self._control.optimistic_state is not None:
+            return self._control.optimistic_state
+        return _ac_vent_running(self.coordinator.data.get(self.vin, {}))
+
+    @property
+    def extra_state_attributes(self) -> dict[str, str]:
+        """Identify whether the shown state is estimated or vehicle-reported."""
+        return {
+            "state_source": "optimistic"
+            if self._control.optimistic_state is not None
+            else "vehicle"
+        }
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Request one short ventilation cycle."""
+        await self._control.async_command(self.hass, True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Request ventilation stop with the native RCC parameters."""
+        await self._control.async_command(self.hass, False)
