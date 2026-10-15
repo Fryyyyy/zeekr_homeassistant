@@ -8,7 +8,10 @@
           "username": "Username",
           "password": "Password",
           "country_code": "Country code",
-          "polling_interval": "Polling interval (minutes)",
+          "polling_interval": "Polling interval when awake (minutes)",
+          "smart_polling": "Smart polling",
+          "sleep_polling_interval": "Deep sleep polling interval (minutes)",
+          "sleep_full_refresh_interval": "Deep sleep full refresh interval (minutes)",
           "hmac_access_key": "HMAC access key",
           "hmac_secret_key": "HMAC secret key",
           "password_public_key": "Password public key",
@@ -18,6 +21,10 @@
           "use_local_api": "Use local API (custom_components/zeekr_ev_api)"
         },
         "data_description": {
+          "polling_interval": "How often all vehicle data is fetched while the car is awake, plugged in or charging.",
+          "smart_polling": "While the car is in deep sleep and unplugged, only fetch the main vehicle status (at the deep sleep polling interval), skipping the other endpoints (charging details, plans, journey log, VTM, remote control state). Disable to always poll everything at the normal interval.",
+          "sleep_polling_interval": "Smart polling: how often the main vehicle status is fetched while the car is in deep sleep and unplugged. Waking, unlocking or plugging in the car is noticed at the next poll, so a longer interval delays that.",
+          "sleep_full_refresh_interval": "Smart polling: while in deep sleep, all other vehicle data is still refreshed at least this often.",
           "use_local_api": "Enable to use the local zeekr_ev_api folder from custom_components. Disable to use an installed package (pip)."
         }
       }
@@ -50,7 +57,10 @@
           "username": "Username",
           "password": "Password",
           "country_code": "Country code",
-          "polling_interval": "Polling interval (minutes)",
+          "polling_interval": "Polling interval when awake (minutes)",
+          "smart_polling": "Smart polling",
+          "sleep_polling_interval": "Deep sleep polling interval (minutes)",
+          "sleep_full_refresh_interval": "Deep sleep full refresh interval (minutes)",
           "hmac_access_key": "HMAC access key",
           "hmac_secret_key": "HMAC secret key",
           "password_public_key": "Password public key",
@@ -61,6 +71,10 @@
           "use_local_api": "Use local API (custom_components/zeekr_ev_api)"
         },
         "data_description": {
+          "polling_interval": "How often all vehicle data is fetched while the car is awake, plugged in or charging.",
+          "smart_polling": "While the car is in deep sleep and unplugged, only fetch the main vehicle status (at the deep sleep polling interval), skipping the other endpoints (charging details, plans, journey log, VTM, remote control state). Disable to always poll everything at the normal interval.",
+          "sleep_polling_interval": "Smart polling: how often the main vehicle status is fetched while the car is in deep sleep and unplugged. Waking, unlocking or plugging in the car is noticed at the next poll, so a longer interval delays that.",
+          "sleep_full_refresh_interval": "Smart polling: while in deep sleep, all other vehicle data is still refreshed at least this often.",
           "use_local_api": "Enable to use the local zeekr_ev_api folder from custom_components. Disable to use an installed package (pip)."
         }
       }
