@@ -41,6 +41,15 @@ MIN_OPERATION_DURATION = 1
 MAX_OPERATION_DURATION = 60
 
 
+def _get_stored_state(hass: HomeAssistant, entity_id: str):
+    """Return the stored state of an entity, on any Home Assistant version."""
+    data = restore_state.async_get(hass)
+    # Home Assistant 2026.11 replaced last_states with async_get_stored_state
+    if hasattr(data, "async_get_stored_state"):
+        return data.async_get_stored_state(entity_id)
+    return data.last_states.get(entity_id)
+
+
 def _migrate_legacy_config_numbers(
     hass: HomeAssistant, entry_id: str, vin: str
 ) -> dict[str, int]:
@@ -50,7 +59,6 @@ def _migrate_legacy_config_numbers(
     values are returned so every vehicle can be seeded with them.
     """
     registry = er.async_get(hass)
-    restored_states = restore_state.async_get(hass).last_states
     values: dict[str, int] = {}
 
     for key, (_name, duration_key, _default_value) in CONFIG_NUMBERS.items():
@@ -64,7 +72,7 @@ def _migrate_legacy_config_numbers(
             Platform.NUMBER, DOMAIN, old_unique_id
         ):
             # RestoreNumber always stores native_value in extra_data
-            stored_state = restored_states.get(entity_id)
+            stored_state = _get_stored_state(hass, entity_id)
             native_value = None
             if stored_state and (extra_data := stored_state.extra_data):
                 native_value = extra_data.as_dict().get("native_value")
