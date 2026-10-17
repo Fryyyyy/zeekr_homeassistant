@@ -406,6 +406,26 @@ def test_migrate_legacy_config_numbers_already_migrated(hass):
     registry.async_update_entity.assert_not_called()
 
 
+def test_migrate_legacy_config_numbers_with_stored_state_api(hass):
+    """Home Assistant 2026.11 replaced last_states with async_get_stored_state."""
+    registry = _legacy_seat_registry(hass)
+    # No last_states attribute, like the restore state data in 2026.11
+    data = SimpleNamespace(
+        async_get_stored_state=lambda entity_id: _stored_state(12)
+        if entity_id == "number.seat_operation_duration"
+        else None
+    )
+
+    with patch.object(restore_state, "async_get", return_value=data):
+        values = _migrate_legacy_config_numbers(hass, "test_entry", "VIN1")
+
+    assert values == {"seat": 12}
+    registry.async_update_entity.assert_called_once_with(
+        "number.seat_operation_duration",
+        new_unique_id="VIN1_seat_operation_duration",
+    )
+
+
 def test_migrate_legacy_config_numbers_without_legacy_entities(hass):
     registry = hass.data[er.DATA_REGISTRY]
 
