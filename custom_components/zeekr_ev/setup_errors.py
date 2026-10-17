@@ -11,8 +11,8 @@ def log_setup_error(logger: logging.Logger, error: Exception, *, stage: str) -> 
     """Return a form error key and log only allowlisted diagnostic information.
 
     The API library currently embeds response dictionaries in exception messages.
-    Never log the raw exception or traceback: either can contain account data or
-    credentials. Match known API codes/messages without exposing the payload.
+    This helper matches known API codes/messages and logs a diagnostic summary
+    without including the raw response payload.
     """
     message = str(error)
     code_match = re.search(
