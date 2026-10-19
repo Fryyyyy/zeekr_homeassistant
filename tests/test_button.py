@@ -23,6 +23,7 @@ class MockCoordinator:
         self.data = {v.vin: {} for v in vehicles}
         self.async_inc_invoke = AsyncMock()
         self.async_request_refresh = AsyncMock()
+        self.request_full_poll = MagicMock()
 
     def get_vehicle_by_vin(self, vin):
         for v in self.vehicles:
@@ -184,7 +185,8 @@ async def test_force_update_button():
 
     await button.async_press()
 
-    # Should trigger a refresh
+    # Should trigger a full refresh for this vehicle
+    coordinator.request_full_poll.assert_called_once_with(vin)
     coordinator.async_request_refresh.assert_called_once()
     # State should now be set to the poll time
     assert button.state is not None
