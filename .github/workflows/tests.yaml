@@ -34,6 +34,7 @@ jobs:
       - name: Install Python modules
         run: |
           pip install pre-commit black flake8 reorder-python-imports mypy types-requests
+          mypy --install-types --non-interactive
 
       - name: Run pre-commit on all files
         run: |
