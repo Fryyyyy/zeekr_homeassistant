@@ -3,3 +3,4 @@ pytest
 pytest-homeassistant-custom-component
 pytest-cov
 pytest-asyncio
+types-requests
