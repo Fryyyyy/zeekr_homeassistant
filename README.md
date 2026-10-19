@@ -49,3 +49,8 @@ New entities default to 15 minutes for AC and seats, and 8 minutes for steering 
 ## Issues
 
 Please report issues on the [GitHub Issue Tracker](https://github.com/Fryyyyy/zeekr_homeassistant/issues).
+
+### Region lookup errors
+
+A region lookup error does not always mean that a country is unsupported. Older
+API library versions also produce it when an EU lookup request is rejected.
