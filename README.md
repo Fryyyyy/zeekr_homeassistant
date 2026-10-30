@@ -34,6 +34,10 @@ This is a custom integration for Zeekr Electric Vehicles for Home Assistant. It 
 3. Search for "Zeekr EV".
 4. Enter your Zeekr account email and password.
 
+### Climate power actions
+
+The cabin climate entity supports `climate.turn_on` and `climate.turn_off`. Turning it on uses the current Home Assistant target temperature and configured AC operation duration.
+
 ### Operation durations
 
 AC, seat heating and ventilation, and steering wheel heating durations are stored locally in Home Assistant. They are not synchronized with the mobile app because the car does not report these settings. Each command uses the duration configured in the client that starts it.

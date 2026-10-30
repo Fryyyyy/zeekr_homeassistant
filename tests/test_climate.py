@@ -64,7 +64,8 @@ class DummyHass:
 
 
 @pytest.mark.asyncio
-async def test_climate_optimistic_update():
+@pytest.mark.parametrize("power_actions", [False, True])
+async def test_climate_optimistic_update(power_actions):
     vin = "VIN1"
     initial_data = {
         vin: {
@@ -88,8 +89,16 @@ async def test_climate_optimistic_update():
     climate.hass.async_create_task = MagicMock()
     climate.async_write_ha_state = MagicMock()
 
-    # Test Turn On
-    await climate.async_set_hvac_mode(HVACMode.HEAT_COOL)
+    await climate.async_set_temperature(temperature=22.5)
+    vehicle_mock.do_remote_control.assert_not_called()
+
+    # Test both HVAC mode selection and the inherited power actions.
+    if power_actions:
+        assert climate.supported_features & ClimateEntityFeature.TURN_ON
+        assert climate.supported_features & ClimateEntityFeature.TURN_OFF
+        await climate.async_turn_on()
+    else:
+        await climate.async_set_hvac_mode(HVACMode.HEAT_COOL)
 
     # Verify remote control called
     vehicle_mock.do_remote_control.assert_called()
@@ -98,6 +107,10 @@ async def test_climate_optimistic_update():
     assert args[1] == "ZAF"
     assert args[2]["serviceParameters"][0]["key"] == "AC"
     assert args[2]["serviceParameters"][0]["value"] == "true"
+    assert args[2]["serviceParameters"][1] == {
+        "key": "AC.temp",
+        "value": "22.5",
+    }
     assert args[2]["serviceParameters"][2] == {
         "key": "AC.duration",
         "value": "17",
@@ -113,7 +126,10 @@ async def test_climate_optimistic_update():
     climate.hass.async_create_task.call_args[0][0].close()
 
     # Test Turn Off
-    await climate.async_set_hvac_mode(HVACMode.OFF)
+    if power_actions:
+        await climate.async_turn_off()
+    else:
+        await climate.async_set_hvac_mode(HVACMode.OFF)
 
     # Verify remote control called
     vehicle_mock.do_remote_control.assert_called_with(
@@ -141,7 +157,10 @@ async def test_climate_optimistic_update():
     vehicle_mock.do_remote_control.return_value = False
     write_count = climate.async_write_ha_state.call_count
     with pytest.raises(HomeAssistantError, match="Failed to set climate mode"):
-        await climate.async_set_hvac_mode(HVACMode.HEAT_COOL)
+        if power_actions:
+            await climate.async_turn_on()
+        else:
+            await climate.async_set_hvac_mode(HVACMode.HEAT_COOL)
     assert climate.hvac_mode == HVACMode.OFF
     assert climate.async_write_ha_state.call_count == write_count
     assert climate.hass.async_create_task.call_count == 2
