@@ -63,12 +63,21 @@ CONF_VIN_IV = "vin_iv"
 CONF_POLLING_INTERVAL = "polling_interval"
 CONF_USE_LOCAL_API = "use_local_api"
 CONF_DRIVE_SIDE = "drive_side"
+CONF_SMART_POLLING = "smart_polling"
+CONF_SLEEP_POLLING_INTERVAL = "sleep_polling_interval"
+CONF_SLEEP_FULL_REFRESH_INTERVAL = "sleep_full_refresh_interval"
 DRIVE_SIDE_LHD = "lhd"
 DRIVE_SIDE_RHD = "rhd"
 
 # Defaults
 DEFAULT_NAME = DOMAIN
 DEFAULT_POLLING_INTERVAL = 5  # minutes
+DEFAULT_SMART_POLLING = True
+# Smart polling, while the car is in deep sleep and unplugged ("idle"):
+# only the main status is polled, at this interval ...
+DEFAULT_SLEEP_POLLING_INTERVAL = 5  # minutes
+# ... and the other endpoints are still refreshed at least this often.
+DEFAULT_SLEEP_FULL_REFRESH_INTERVAL = 60  # minutes
 
 # Refrigeration-box protocol bounds
 VTM_COOL_MIN_TEMP = -15

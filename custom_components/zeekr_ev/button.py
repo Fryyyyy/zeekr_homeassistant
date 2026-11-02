@@ -200,4 +200,5 @@ class ZeekrForceUpdateButton(ZeekrEntity, ButtonEntity):
         """Handle the button press."""
         _LOGGER.info("Poll vehicle data requested for vehicle %s", self.vin)
         self.coordinator.latest_poll_time = datetime.now().isoformat()
+        self.coordinator.request_full_poll(self.vin)
         await self.coordinator.async_request_refresh()
