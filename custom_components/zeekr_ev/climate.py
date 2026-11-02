@@ -62,7 +62,11 @@ class ZeekrClimate(CoordinatorEntity[ZeekrCoordinator], ClimateEntity):
     _attr_has_entity_name = True
     _attr_name = "Climate"
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
-    _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
+    _attr_supported_features = (
+        ClimateEntityFeature.TARGET_TEMPERATURE
+        | ClimateEntityFeature.TURN_ON
+        | ClimateEntityFeature.TURN_OFF
+    )
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT_COOL]
 
     def __init__(self, coordinator: ZeekrCoordinator, vin: str) -> None:
