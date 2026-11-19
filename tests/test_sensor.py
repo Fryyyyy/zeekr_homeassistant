@@ -490,3 +490,35 @@ def test_journey_log_native_value_zero_when_data_is_null():
     coordinator = DummyCoordinator({"VIN1": {"journeyLog": {"total": 0, "data": None}}})
     sensor = ZeekrJourneyLogSensor(coordinator, "VIN1")
     assert sensor.native_value == 0
+
+
+async def test_should_create_12v_battery_voltage_sensor_when_status_reports_it(
+    monkeypatch,
+):
+    from unittest.mock import MagicMock
+    from custom_components.zeekr_ev import sensor as sensor_mod
+    from custom_components.zeekr_ev.const import DOMAIN
+
+    monkeypatch.setattr(sensor_mod, "zeekr_app_sig_module", object())
+    coordinator = MagicMock()
+    coordinator.data = {
+        "VIN1": {
+            "additionalVehicleStatus": {
+                "maintenanceStatus": {"mainBatteryStatus": {"voltage": 13.075}}
+            }
+        }
+    }
+    hass = MagicMock()
+    hass.data = {DOMAIN: {"entry1": coordinator}}
+    entry = MagicMock()
+    entry.entry_id = "entry1"
+    entry.data = {}
+    added = []
+
+    await sensor_mod.async_setup_entry(
+        hass, entry, lambda ents, *a, **k: added.extend(ents)
+    )
+
+    sensor = next(e for e in added if getattr(e, "key", None) == "aux_battery_voltage")
+    assert sensor.native_value == 13.075
+    assert sensor.native_unit_of_measurement == "V"
