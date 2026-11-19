@@ -270,6 +270,24 @@ async def async_setup_entry(
             )
         )
 
+        # 12 V auxiliary battery voltage. The car reports it under
+        # maintenanceStatus.mainBatteryStatus; a low reading is the usual cause
+        # of a car that will not wake.
+        entities.append(
+            ZeekrSensor(
+                coordinator,
+                vin,
+                "aux_battery_voltage",
+                "12V Battery Voltage",
+                lambda d: d.get("additionalVehicleStatus", {})
+                .get("maintenanceStatus", {})
+                .get("mainBatteryStatus", {})
+                .get("voltage"),
+                UnitOfElectricPotential.VOLT,
+                SensorDeviceClass.VOLTAGE,
+            )
+        )
+
         # Tire Pressures
         drive_side = entry.data.get(CONF_DRIVE_SIDE, DRIVE_SIDE_LHD)
         for tire in ["Driver", "Passenger", "DriverRear", "PassengerRear"]:
