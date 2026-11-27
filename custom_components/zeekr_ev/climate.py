@@ -61,7 +61,7 @@ class ZeekrClimate(CoordinatorEntity[ZeekrCoordinator], ClimateEntity):
 
     _attr_has_entity_name = True
     _attr_name = "Climate"
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
         | ClimateEntityFeature.TURN_ON
@@ -77,7 +77,7 @@ class ZeekrClimate(CoordinatorEntity[ZeekrCoordinator], ClimateEntity):
         self._target_temperature = 20.0  # Default since vehicle doesn't report setpoint
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         """Return the current temperature."""
         try:
             val = (
@@ -91,7 +91,7 @@ class ZeekrClimate(CoordinatorEntity[ZeekrCoordinator], ClimateEntity):
             return None
 
     @property
-    def target_temperature(self) -> float | None:
+    def native_target_temperature(self) -> float | None:
         """Return the temperature we try to reach."""
         return self._target_temperature
 
@@ -242,7 +242,7 @@ class ZeekrRefrigerationBoxClimate(
 
     _attr_name = "Refrigeration Box"
     _attr_icon = "mdi:fridge-outline"
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_target_temperature_step = 1
     _attr_supported_features = (
         ClimateEntityFeature.TARGET_TEMPERATURE
@@ -257,7 +257,7 @@ class ZeekrRefrigerationBoxClimate(
         self._attr_unique_id = f"{vin}_refrigeration_box"
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         """Return the measured box temperature."""
         try:
             status, _ = self._vtm_state()
@@ -272,7 +272,7 @@ class ZeekrRefrigerationBoxClimate(
             return None
 
     @property
-    def target_temperature(self) -> float | None:
+    def native_target_temperature(self) -> float | None:
         """Return the configured box temperature."""
         _, setting = self._vtm_state()
         return float(setting["temp"]) if setting else None
