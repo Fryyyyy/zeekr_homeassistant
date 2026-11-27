@@ -49,7 +49,6 @@ class ZeekrEVAPIFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):  # type: 
 
     VERSION = 1
     MINOR_VERSION = 2
-    CONNECTION_CLASS = config_entries.CONN_CLASS_CLOUD_POLL
 
     def __init__(self) -> None:
         """Initialize."""

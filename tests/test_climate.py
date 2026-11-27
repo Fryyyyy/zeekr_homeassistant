@@ -179,7 +179,7 @@ async def test_climate_set_temperature_rolls_back_on_rejection():
     climate = ZeekrClimate(coordinator, vin)
     climate.hass = DummyHass()
     climate.async_write_ha_state = MagicMock()
-    previous_target = climate.target_temperature
+    previous_target = climate.native_target_temperature
 
     # The climate is running, so the new target is re-sent; a rejection restores the old one
     with pytest.raises(HomeAssistantError, match="Failed to set climate mode"):
@@ -187,7 +187,7 @@ async def test_climate_set_temperature_rolls_back_on_rejection():
 
     params = vehicle_mock.do_remote_control.call_args.args[2]["serviceParameters"]
     assert params[1] == {"key": "AC.temp", "value": str(previous_target + 2)}
-    assert climate.target_temperature == previous_target
+    assert climate.native_target_temperature == previous_target
     climate.async_write_ha_state.assert_not_called()
 
 
@@ -204,13 +204,13 @@ async def test_climate_set_temperature_rolls_back_on_request_error():
     climate = ZeekrClimate(coordinator, vin)
     climate.hass = DummyHass()
     climate.async_write_ha_state = MagicMock()
-    previous_target = climate.target_temperature
+    previous_target = climate.native_target_temperature
 
     # The request itself failing (network/auth) must roll the target back too
     with pytest.raises(ConnectionError):
         await climate.async_set_temperature(temperature=previous_target + 2)
 
-    assert climate.target_temperature == previous_target
+    assert climate.native_target_temperature == previous_target
     climate.async_write_ha_state.assert_not_called()
 
 
@@ -229,11 +229,11 @@ async def test_climate_set_temperature_resends_while_running():
     # Simple mock for async_create_task
     climate.hass.async_create_task = MagicMock()
     climate.async_write_ha_state = MagicMock()
-    previous_target = climate.target_temperature
+    previous_target = climate.native_target_temperature
 
     await climate.async_set_temperature(temperature=previous_target + 2)
 
-    assert climate.target_temperature == previous_target + 2
+    assert climate.native_target_temperature == previous_target + 2
     params = vehicle_mock.do_remote_control.call_args.args[2]["serviceParameters"]
     assert params[1] == {"key": "AC.temp", "value": str(previous_target + 2)}
     climate.async_write_ha_state.assert_called()
@@ -273,7 +273,7 @@ async def test_climate_properties_missing_data(hass):
     coordinator = MockCoordinator({"VIN1": {}})
     climate = ZeekrClimate(coordinator, "VIN1")
     assert climate.hvac_mode == HVACMode.OFF
-    assert climate.current_temperature is None
+    assert climate.native_current_temperature is None
 
 
 @pytest.mark.asyncio
@@ -382,8 +382,8 @@ def test_refrigeration_climate_properties():
 
     assert climate.available
     assert climate.hvac_mode == HVACMode.COOL
-    assert climate.current_temperature == 2.0
-    assert climate.target_temperature == 3.0
+    assert climate.native_current_temperature == 2.0
+    assert climate.native_target_temperature == 3.0
     assert climate.min_temp == -15
     assert climate.max_temp == 20
 
@@ -398,7 +398,7 @@ def test_refrigeration_climate_properties():
     assert climate.max_temp == 50
 
     coordinator.data["VIN1"]["vtmStatus"]["currentTemperature"] = "nan"
-    assert climate.current_temperature is None
+    assert climate.native_current_temperature is None
 
 
 @pytest.mark.asyncio
@@ -581,8 +581,8 @@ async def test_refrigeration_start_reuses_cached_off_settings():
         },
     )
     assert climate.hvac_mode == HVACMode.COOL
-    assert climate.target_temperature == 4.0
-    assert climate.current_temperature is None
+    assert climate.native_target_temperature == 4.0
+    assert climate.native_current_temperature is None
     assert (
         coordinator.data["VIN1"]["vtmStatus"]["vtmModel"]["setting"][0][
             "duration"
